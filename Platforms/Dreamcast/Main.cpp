@@ -48,8 +48,8 @@ static void poll_controller(uw *prev) {
     // Analog L/R triggers: treat as digital buttons above a threshold.
     bool ltrig_now = state->ltrig > DC_LTRIG_THRESHOLD;
     bool rtrig_now = state->rtrig > DC_RTRIG_THRESHOLD;
-    bool ltrig_was = (*prev >> 16) & 0x1;
-    bool rtrig_was = (*prev >> 17) & 0x1;
+    bool ltrig_was = (*prev & DC_BTN_LTRIG) != 0;
+    bool rtrig_was = (*prev & DC_BTN_RTRIG) != 0;
 
     if (ltrig_now != ltrig_was) {
         sio.padListener(DC_BTN_LTRIG, ltrig_now);
@@ -59,8 +59,8 @@ static void poll_controller(uw *prev) {
     }
 
     *prev = (uw)cur_buttons
-          | ((uw)ltrig_now << 16)
-          | ((uw)rtrig_now << 17);
+          | (ltrig_now ? (uw)DC_BTN_LTRIG : 0u)
+          | (rtrig_now ? (uw)DC_BTN_RTRIG : 0u);
 }
 #endif // __KOS__
 
