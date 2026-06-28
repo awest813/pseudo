@@ -82,6 +82,9 @@ void CstrSerial::padListener(int code, bool pushed) {
     if (code & CONT_DPAD_RIGHT)  { btnCheck(PAD_BTN_RIGHT);    }
     if (code & CONT_Z)           { btnCheck(PAD_BTN_L2);       }
     if (code & CONT_C)           { btnCheck(PAD_BTN_R2);       }
+    // L/R analog triggers converted to digital L1/R1 via synthetic bits
+    if (code & DC_BTN_LTRIG)     { btnCheck(PAD_BTN_L1);       }
+    if (code & DC_BTN_RTRIG)     { btnCheck(PAD_BTN_R1);       }
 #endif
 }
 

@@ -14,7 +14,9 @@ CXXFLAGS += -DDREAMCAST \
             -I$(KOS_BASE)/../kos-ports/include \
             -I$(SOURCE_DIR) \
             -I.
-LDFLAGS  += -L$(KOS_BASE)/lib
+LDFLAGS  += -L$(KOS_BASE)/lib \
+            -L$(KOS_BASE)/../kos-ports/lib \
+            -lGLdc -lopenal
 TARGET   := $(TARGET).elf
 SOURCES  := Main.cpp \
             $(SOURCE_DIR)/Bus.cc \
