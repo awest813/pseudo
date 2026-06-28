@@ -29,6 +29,21 @@
     #define GL_RGB_SCALE    0x8573
     #define MIN(a, b)       (((a) < (b)) ? (a) : (b))
     #define MAX(a, b)       (((a) > (b)) ? (a) : (b))
+#elif  DREAMCAST
+    #ifdef __KOS__
+        #include <kos.h>
+        #include <GL/gl.h>
+        #include <AL/al.h>
+        #include <AL/alc.h>
+    #else
+        #include <cstdio>
+        #include <cstdlib>
+    #endif
+
+    #define MIN(a, b)       (((a) < (b)) ? (a) : (b))
+    #define MAX(a, b)       (((a) > (b)) ? (a) : (b))
+
+    #include "../Platforms/Dreamcast/Global.h"
 #endif
 
 // Data

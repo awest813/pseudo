@@ -68,6 +68,20 @@ void CstrSerial::padListener(int code, bool pushed) {
     if (code ==   6) { // Z
         btnCheck(PAD_BTN_CIRCLE);
     }
+#elif defined(DREAMCAST) && defined(__KOS__)
+    // Map Dreamcast controller (KOS CONT_* bitmasks) to PS1 buttons.
+    // padListener is called once per changed bit, so code holds a single bit.
+    if (code & CONT_START)       { btnCheck(PAD_BTN_START);    }
+    if (code & CONT_A)           { btnCheck(PAD_BTN_CROSS);    }
+    if (code & CONT_B)           { btnCheck(PAD_BTN_CIRCLE);   }
+    if (code & CONT_X)           { btnCheck(PAD_BTN_SQUARE);   }
+    if (code & CONT_Y)           { btnCheck(PAD_BTN_TRIANGLE); }
+    if (code & CONT_DPAD_UP)     { btnCheck(PAD_BTN_UP);       }
+    if (code & CONT_DPAD_DOWN)   { btnCheck(PAD_BTN_DOWN);     }
+    if (code & CONT_DPAD_LEFT)   { btnCheck(PAD_BTN_LEFT);     }
+    if (code & CONT_DPAD_RIGHT)  { btnCheck(PAD_BTN_RIGHT);    }
+    if (code & CONT_Z)           { btnCheck(PAD_BTN_L2);       }
+    if (code & CONT_C)           { btnCheck(PAD_BTN_R2);       }
 #endif
 }
 
