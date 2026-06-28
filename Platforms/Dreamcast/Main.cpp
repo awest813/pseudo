@@ -33,7 +33,8 @@ static void poll_controller(uint16_t *prev) {
     }
 
     uint16_t changed = *prev ^ state->buttons;
-    for (uint16_t bit = 1; bit; bit <<= 1) {
+    for (int i = 0; i < 16; i++) {
+        uint16_t bit = (uint16_t)(1 << i);
         if (changed & bit) {
             // pushed = true when bit transitions 1->0 (button pressed)
             sio.padListener((int)bit, !(state->buttons & bit));
@@ -63,7 +64,7 @@ int main(int argc, char **argv) {
     };
 
     bool bios_loaded = false;
-    for (auto path : bios_candidates) {
+    for (const char *path : bios_candidates) {
         FILE *fp = fopen(path, "rb");
         if (fp) {
             fclose(fp);

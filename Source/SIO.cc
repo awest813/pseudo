@@ -69,18 +69,19 @@ void CstrSerial::padListener(int code, bool pushed) {
         btnCheck(PAD_BTN_CIRCLE);
     }
 #elif defined(DREAMCAST) && defined(__KOS__)
-    // Map Dreamcast controller (KOS CONT_* bitmasks) to PS1 buttons
-    if      (code == CONT_START)       { btnCheck(PAD_BTN_START);    }
-    else if (code == CONT_A)           { btnCheck(PAD_BTN_CROSS);    }
-    else if (code == CONT_B)           { btnCheck(PAD_BTN_CIRCLE);   }
-    else if (code == CONT_X)           { btnCheck(PAD_BTN_SQUARE);   }
-    else if (code == CONT_Y)           { btnCheck(PAD_BTN_TRIANGLE); }
-    else if (code == CONT_DPAD_UP)     { btnCheck(PAD_BTN_UP);       }
-    else if (code == CONT_DPAD_DOWN)   { btnCheck(PAD_BTN_DOWN);     }
-    else if (code == CONT_DPAD_LEFT)   { btnCheck(PAD_BTN_LEFT);     }
-    else if (code == CONT_DPAD_RIGHT)  { btnCheck(PAD_BTN_RIGHT);    }
-    else if (code == CONT_Z)           { btnCheck(PAD_BTN_L2);       }
-    else if (code == CONT_C)           { btnCheck(PAD_BTN_R2);       }
+    // Map Dreamcast controller (KOS CONT_* bitmasks) to PS1 buttons.
+    // padListener is called once per changed bit, so code holds a single bit.
+    if (code & CONT_START)       { btnCheck(PAD_BTN_START);    }
+    if (code & CONT_A)           { btnCheck(PAD_BTN_CROSS);    }
+    if (code & CONT_B)           { btnCheck(PAD_BTN_CIRCLE);   }
+    if (code & CONT_X)           { btnCheck(PAD_BTN_SQUARE);   }
+    if (code & CONT_Y)           { btnCheck(PAD_BTN_TRIANGLE); }
+    if (code & CONT_DPAD_UP)     { btnCheck(PAD_BTN_UP);       }
+    if (code & CONT_DPAD_DOWN)   { btnCheck(PAD_BTN_DOWN);     }
+    if (code & CONT_DPAD_LEFT)   { btnCheck(PAD_BTN_LEFT);     }
+    if (code & CONT_DPAD_RIGHT)  { btnCheck(PAD_BTN_RIGHT);    }
+    if (code & CONT_Z)           { btnCheck(PAD_BTN_L2);       }
+    if (code & CONT_C)           { btnCheck(PAD_BTN_R2);       }
 #endif
 }
 
