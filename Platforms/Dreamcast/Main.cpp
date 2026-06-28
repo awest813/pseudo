@@ -21,7 +21,9 @@ static void *audio_thread(void *arg) {
 
 // Poll the Dreamcast controller and forward button changes to the SIO layer.
 // KOS button bits are active-low (0 = pressed, 1 = released).
-static void poll_controller(uint16_t *prev) {
+// The upper bits of *prev store the previous digital state of the analog
+// triggers: bit 16 = left trigger, bit 17 = right trigger.
+static void poll_controller(uw *prev) {
     maple_device_t *dev = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
     if (!dev) {
         return;
@@ -32,15 +34,33 @@ static void poll_controller(uint16_t *prev) {
         return;
     }
 
-    uint16_t changed = *prev ^ state->buttons;
+    // Digital buttons (active-low in the KOS bitmask)
+    uint16_t cur_buttons = (uint16_t)state->buttons;
+    uint16_t changed = (uint16_t)(*prev & 0xffff) ^ cur_buttons;
     for (int i = 0; i < 16; i++) {
         uint16_t bit = (uint16_t)(1 << i);
         if (changed & bit) {
             // pushed = true when bit transitions 1->0 (button pressed)
-            sio.padListener((int)bit, !(state->buttons & bit));
+            sio.padListener((int)bit, !(cur_buttons & bit));
         }
     }
-    *prev = state->buttons;
+
+    // Analog L/R triggers: treat as digital buttons above a threshold.
+    bool ltrig_now = state->ltrig > DC_LTRIG_THRESHOLD;
+    bool rtrig_now = state->rtrig > DC_RTRIG_THRESHOLD;
+    bool ltrig_was = (*prev >> 16) & 0x1;
+    bool rtrig_was = (*prev >> 17) & 0x1;
+
+    if (ltrig_now != ltrig_was) {
+        sio.padListener(DC_BTN_LTRIG, ltrig_now);
+    }
+    if (rtrig_now != rtrig_was) {
+        sio.padListener(DC_BTN_RTRIG, rtrig_now);
+    }
+
+    *prev = (uw)cur_buttons
+          | ((uw)ltrig_now << 16)
+          | ((uw)rtrig_now << 17);
 }
 #endif // __KOS__
 
@@ -80,12 +100,41 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    // Try to load a PS1 game image (BIN) from the romdisk then the GD-ROM.
+    const char *game_candidates[] = {
+        "/rd/PSX.BIN",
+        "/rd/psx.bin",
+        "/rd/GAME.BIN",
+        "/rd/game.bin",
+        "/cd/PSX.BIN",
+        "/cd/psx.bin",
+        "/cd/GAME.BIN",
+        "/cd/game.bin",
+    };
+
+    bool game_loaded = false;
+    for (const char *path : game_candidates) {
+        FILE *fp = fopen(path, "rb");
+        if (fp) {
+            fclose(fp);
+            printf("Loading game: %s\n", path);
+            psx.iso(path);
+            game_loaded = true;
+            break;
+        }
+    }
+
+    if (!game_loaded) {
+        printf("PSeudo: No game image found. Running BIOS shell.\n");
+    }
+
     // Launch the CPU and audio threads
     kthread_t *t_cpu   = thd_create(0, cpu_thread,   NULL);
     kthread_t *t_audio = thd_create(0, audio_thread, NULL);
 
-    // Main loop: poll controller and yield to other threads
-    uint16_t prev_buttons = 0xffff; // All bits high = no buttons pressed
+    // Main loop: poll controller and yield to other threads.
+    // Upper bits of prev_buttons hold the previous digital trigger state.
+    uw prev_buttons = 0xffff; // All digital bits high = no buttons pressed
     while (!psx.suspended) {
         poll_controller(&prev_buttons);
         thd_pass();
