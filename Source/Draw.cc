@@ -49,7 +49,11 @@ void CstrDraw::swapBuffers() {
     //int sx = ((int)(vs.rx_u - vs.rx_l) * res.h) / 2560;
     GLOrtho(vs.dispOffsetX * 2, res.h + vs.dispOffsetX * 2, res.v + vs.dispOffsetY, vs.dispOffsetY, 1, -1);
 //    GLFlush();
+#ifdef DREAMCAST
+    glKosSwapBuffers();
+#else
     glFinish();
+#endif
 }
 
 void CstrDraw::resize(sh w, sh h) {
@@ -91,17 +95,21 @@ void CstrDraw::keepAspectRatio(sh w, sh h, int multiplier) {
 void CstrDraw::opaqueClipState(bool enable) {
     if (enable) {
         GLEnable(GL_BLEND);
+#ifndef DREAMCAST
         GLEnable(GL_CLIP_PLANE0);
         GLEnable(GL_CLIP_PLANE1);
         GLEnable(GL_CLIP_PLANE2);
         GLEnable(GL_CLIP_PLANE3);
+#endif
     }
     else {
         GLDisable(GL_BLEND);
+#ifndef DREAMCAST
         GLDisable(GL_CLIP_PLANE0);
         GLDisable(GL_CLIP_PLANE1);
         GLDisable(GL_CLIP_PLANE2);
         GLDisable(GL_CLIP_PLANE3);
+#endif
     }
 }
 
@@ -145,6 +153,9 @@ void CstrDraw::setDrawArea(int plane, uw data) {
 #elif APPLE_IOS
     GLClipPlanef(GL_CLIP_PLANE0 + (plane + 0), (float *)e1);
     GLClipPlanef(GL_CLIP_PLANE0 + (plane + 1), (float *)e2);
+#elif DREAMCAST
+    // glClipPlane not supported by GLdc; draw-area clipping is a TODO
+    (void)e1; (void)e2;
 #endif
 }
 
@@ -177,7 +188,7 @@ void CstrDraw::primitive(uw addr, uw *packets) {
                         opaqueClipState(false);
                         GLColor4ub(hue[0]->r, hue[0]->c, hue[0]->b, COLOR_MAX);
                         
-#if defined(APPLE_MACOS) || defined(_WIN32)
+#if defined(APPLE_MACOS) || defined(_WIN32) || defined(DREAMCAST)
                         GLRecti(NORMALIZE_PT(vx[0]->w),
                                 NORMALIZE_PT(vx[0]->h),
                                 NORMALIZE_PT(vx[0]->w) + sz[0]->w,
@@ -227,7 +238,7 @@ void CstrDraw::primitive(uw addr, uw *packets) {
                 
                 const ub b = opaqueFunc(setup->semi_trans);
                 
-#if defined(APPLE_MACOS) || defined(_WIN32)
+#if defined(APPLE_MACOS) || defined(_WIN32) || defined(DREAMCAST)
                 GLStart(GL_TRIANGLE_STRIP);
                 for (int i = 0; i < points; i++) {
                     if (setup->textured && setup->raw_tex) {
@@ -276,7 +287,7 @@ void CstrDraw::primitive(uw addr, uw *packets) {
                 
                 const ub b = opaqueFunc(setup->semi_trans);
                 
-#if defined(APPLE_MACOS) || defined(_WIN32)
+#if defined(APPLE_MACOS) || defined(_WIN32) || defined(DREAMCAST)
                 GLStart(GL_LINE_STRIP);
                 for (int i = 0; i < points; i++) {
                     if (setup->multiline) { // Special case
@@ -352,7 +363,7 @@ void CstrDraw::primitive(uw addr, uw *packets) {
                 const ub b = opaqueFunc(setup->semi_trans);
                 GLColor4ub(hue[0]->r, hue[0]->c, hue[0]->b, b);
                 
-#if defined(APPLE_MACOS) || defined(_WIN32)
+#if defined(APPLE_MACOS) || defined(_WIN32) || defined(DREAMCAST)
                 GLStart(GL_TRIANGLE_STRIP);
                     // Cast offset
                     vx[0]->w = NORMALIZE_PT(vx[0]->w) + offset.h;
@@ -451,7 +462,7 @@ void CstrDraw::outputVRAM(uw *raw, sh X, sh Y, sh W, sh H, bool video24Bit) {
         GLTexSubPhoto2D(GL_TEXTURE_2D, 0, 0, 0, W, H, GL_RGBA, GL_UNSIGNED_BYTE, raw);
     }
     
-#if defined(APPLE_MACOS) || defined(_WIN32)
+#if defined(APPLE_MACOS) || defined(_WIN32) || defined(DREAMCAST)
     GLStart(GL_TRIANGLE_STRIP);
         GLTexCoord2s(0, 0); GLVertex2s(X,     Y);
         GLTexCoord2s(W, 0); GLVertex2s(X + W, Y);
@@ -499,7 +510,7 @@ void CstrDraw::updateVRAMView() {
         GLBindTexture  (GL_TEXTURE_2D, fbVram);
         GLTexSubPhoto2D(GL_TEXTURE_2D, 0, 0, 0, FRAME_W, FRAME_H, GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, (GLvoid *)&vs.vram.ptr[0]);
         
-#if defined(APPLE_MACOS) || defined(_WIN32)
+#if defined(APPLE_MACOS) || defined(_WIN32) || defined(DREAMCAST)
         GLStart(GL_TRIANGLE_STRIP);
             GLTexCoord2s(0,             0); GLVertex2s(0,       0);
             GLTexCoord2s(FRAME_W,       0); GLVertex2s(FRAME_W, 0);

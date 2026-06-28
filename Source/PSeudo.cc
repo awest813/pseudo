@@ -51,6 +51,8 @@ void CstrPSeudo::reset() {
     [app consolePrint:[NSChars charsWithFormat:@"%s\n\nPSeudo™ : Alpha 0.89\n-> reset complete\n", version]];
 #elif  APPLE_IOS
     // TODO
+#elif  DREAMCAST
+    printf("%s\n\nPSeudo : Alpha 0.89\n-> reset complete\n", version);
 #endif
 }
 
@@ -104,6 +106,8 @@ void CstrPSeudo::console(uw *base, uw addr) {
             [app consolePrint:[NSChars charsWithFormat:@"%c", put]];
 #elif  APPLE_IOS
             // TODO
+#elif  DREAMCAST
+            printf("%c", put);
 #endif
         }
     }
