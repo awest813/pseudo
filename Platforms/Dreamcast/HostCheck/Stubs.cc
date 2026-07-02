@@ -2,6 +2,7 @@
  * Dreamcast build of PSeudo can be fully linked on a PC. */
 
 #include <kos.h>
+#include <dc/biosfont.h>
 #include <GL/gl.h>
 #include <GL/glkos.h>
 #include <AL/al.h>
@@ -21,6 +22,17 @@ void *maple_dev_status(maple_device_t *)              { return 0; }
 kthread_t *thd_create(int, void *(*)(void *), void *) { return 0; }
 int thd_join(kthread_t *, void **)                    { return 0; }
 void thd_pass(void)                                   { }
+
+/* A checkerboard glyph is enough for compile/link checking */
+unsigned char *bfont_find_char(unsigned int) {
+    static unsigned char glyph[36] = {
+        0xaa, 0xa5, 0x55, 0xaa, 0xa5, 0x55, 0xaa, 0xa5, 0x55,
+        0xaa, 0xa5, 0x55, 0xaa, 0xa5, 0x55, 0xaa, 0xa5, 0x55,
+        0xaa, 0xa5, 0x55, 0xaa, 0xa5, 0x55, 0xaa, 0xa5, 0x55,
+        0xaa, 0xa5, 0x55, 0xaa, 0xa5, 0x55, 0xaa, 0xa5, 0x55,
+    };
+    return glyph;
+}
 
 /* --- GLdc ------------------------------------------------------------ */
 

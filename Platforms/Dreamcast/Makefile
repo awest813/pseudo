@@ -21,7 +21,8 @@ ifneq ($(wildcard $(KOS_BASE)/Makefile.rules),)
 # KOS (Dreamcast) build
 # ---------------------------------------------------------------------------
 TARGET := pseudo-dreamcast.elf
-OBJS   := Main.o $(addprefix $(SOURCE_DIR)/,$(addsuffix .o,$(CORE_SRCS))) \
+OBJS   := Main.o Menu.o \
+          $(addprefix $(SOURCE_DIR)/,$(addsuffix .o,$(CORE_SRCS))) \
           romdisk.o
 
 KOS_ROMDISK_DIR := romdisk
@@ -48,7 +49,7 @@ else
 CXX    ?= g++
 TARGET := pseudo-dreamcast.host
 
-SOURCES := Main.cpp HostCheck/Stubs.cc \
+SOURCES := Main.cpp Menu.cpp HostCheck/Stubs.cc \
            $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
 
 CXXFLAGS += -std=gnu++17 -Wall -DDREAMCAST -D__KOS__ \

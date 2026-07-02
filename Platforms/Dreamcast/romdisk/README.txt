@@ -9,8 +9,9 @@ and the GD-ROM (/cd) second:
                .cue sheet pointing at one
   - Homebrew   a PS-X EXE file
 
-A disc image takes precedence over a PS-X EXE. Without either, the
-emulator boots into the BIOS shell; without a BIOS it exits.
+With a single game found it boots straight away; with several, a boot
+menu lets you pick. Without any, the emulator boots into the BIOS
+shell; without a BIOS it exits.
 
 Note the romdisk is loaded into RAM whole, so prefer the GD-ROM for
 full-size game images.

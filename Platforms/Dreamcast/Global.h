@@ -27,10 +27,17 @@
 #define DC_LTRIG_THRESHOLD 64
 #define DC_RTRIG_THRESHOLD 64
 
-// Synthetic button bits used to pass L/R trigger state through padListener.
+// Analog stick deflection (-128..127) treated as a digital D-pad press
+#define DC_STICK_THRESHOLD 64
+
+// Synthetic button bits used to pass extra state through padListener.
 // These are placed above the 16-bit CONT_* bitmask range so they never
 // alias real Dreamcast button bits.
-#define DC_BTN_LTRIG (1 << 16)
-#define DC_BTN_RTRIG (1 << 17)
+#define DC_BTN_LTRIG  (1 << 16)
+#define DC_BTN_RTRIG  (1 << 17)
+#define DC_BTN_SELECT (1 << 18) // No Select on DC pads: L+R triggers + Start
+
+// Total number of button bits tracked by the polling loop
+#define DC_BTN_BITS 19
 
 #endif

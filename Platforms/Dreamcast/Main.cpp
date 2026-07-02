@@ -24,8 +24,8 @@ static void *audio_thread(void *arg) {
 // Poll the Dreamcast controller and forward button changes to the SIO layer.
 // cont_state_t.buttons is active-high: the maple driver normalizes the
 // active-low wire format, so a set bit means the button is pressed.
-// The upper bits of *prev store the previous digital state of the analog
-// triggers: bit 16 = left trigger, bit 17 = right trigger.
+// The word tracked in *prev holds the 16 CONT_* bits plus the synthetic
+// DC_BTN_* bits for the analog triggers and the Select combo.
 static void poll_controller(uw *prev) {
     maple_device_t *dev = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
     if (!dev) {
@@ -37,47 +37,48 @@ static void poll_controller(uw *prev) {
         return;
     }
 
-    // Digital buttons
-    uint16_t cur_buttons = (uint16_t)state->buttons;
-    uint16_t changed = (uint16_t)(*prev & 0xffff) ^ cur_buttons;
-    for (int i = 0; i < 16; i++) {
-        uint16_t bit = (uint16_t)(1 << i);
+    uw cur = (uw)(state->buttons & 0xffff);
+
+    // The analog stick doubles as the digital pad
+    if (state->joyx < -DC_STICK_THRESHOLD) cur |= CONT_DPAD_LEFT;
+    if (state->joyx >  DC_STICK_THRESHOLD) cur |= CONT_DPAD_RIGHT;
+    if (state->joyy < -DC_STICK_THRESHOLD) cur |= CONT_DPAD_UP;
+    if (state->joyy >  DC_STICK_THRESHOLD) cur |= CONT_DPAD_DOWN;
+
+    // Analog L/R triggers as digital L1/R1
+    bool ltrig = state->ltrig > DC_LTRIG_THRESHOLD;
+    bool rtrig = state->rtrig > DC_RTRIG_THRESHOLD;
+    if (ltrig) cur |= DC_BTN_LTRIG;
+    if (rtrig) cur |= DC_BTN_RTRIG;
+
+    // Dreamcast pads have no Select: both triggers + Start sends Select
+    // (Start itself is suppressed while the combo is held)
+    if (ltrig && rtrig && (cur & CONT_START)) {
+        cur = (cur & ~(uw)CONT_START) | DC_BTN_SELECT;
+    }
+
+    // A+B+X+Y+Start: the Dreamcast convention to leave a game
+    const uw quit = CONT_A | CONT_B | CONT_X | CONT_Y | CONT_START;
+    if ((cur & quit) == quit) {
+        psx.suspended = true;
+    }
+
+    uw changed = *prev ^ cur;
+    for (int i = 0; i < DC_BTN_BITS; i++) {
+        uw bit = 1u << i;
         if (changed & bit) {
-            sio.padListener((int)bit, (cur_buttons & bit) != 0);
+            sio.padListener((int)bit, (cur & bit) != 0);
         }
     }
-
-    // Analog L/R triggers: treat as digital buttons above a threshold.
-    bool ltrig_now = state->ltrig > DC_LTRIG_THRESHOLD;
-    bool rtrig_now = state->rtrig > DC_RTRIG_THRESHOLD;
-    bool ltrig_was = (*prev & DC_BTN_LTRIG) != 0;
-    bool rtrig_was = (*prev & DC_BTN_RTRIG) != 0;
-
-    if (ltrig_now != ltrig_was) {
-        sio.padListener(DC_BTN_LTRIG, ltrig_now);
-    }
-    if (rtrig_now != rtrig_was) {
-        sio.padListener(DC_BTN_RTRIG, rtrig_now);
-    }
-
-    *prev = (uw)cur_buttons
-          | (ltrig_now ? (uw)DC_BTN_LTRIG : 0u)
-          | (rtrig_now ? (uw)DC_BTN_RTRIG : 0u);
+    *prev = cur;
 }
 
 // --- Media discovery -------------------------------------------------------
 // Files on the romdisk and GD-ROM are classified by content, not by name,
 // so BIOS dumps, disc images and PS-X EXE homebrew can be called anything.
+// The entry types live in Menu.h, shared with the boot picker.
 
-enum MediaKind {
-    MEDIA_NONE,
-    MEDIA_BIOS, // 512KB raw BIOS dump
-    MEDIA_EXE,  // "PS-X EXE" header
-    MEDIA_DISC, // raw disc image, 2352 bytes per sector
-    MEDIA_CUE,  // cue sheet naming a disc image
-};
-
-#define MEDIA_PATH_MAX 256
+#include "Menu.h"
 
 // At least this many sectors before a file can be a disc image, to avoid
 // mistaking small binaries whose size happens to be sector-aligned
@@ -158,16 +159,29 @@ static bool cueDataFile(const char *cuePath, char *out, size_t outSize) {
     return found;
 }
 
-// Scan one directory, keeping the first hit of each kind. Earlier calls
-// win: paths already filled in are not replaced.
-static void scanMedia(const char *dir, char *bios, char *game, char *exe) {
+// Append a media entry, deduplicating by path (a cue sheet and the image
+// it references resolve to the same file)
+static int addEntry(MediaEntry *list, int count, const char *path, MediaKind kind) {
+    if (count >= MEDIA_MAX_ENTRIES) {
+        return count;
+    }
+    for (int i = 0; i < count; i++) {
+        if (!strcmp(list[i].path, path)) {
+            return count;
+        }
+    }
+    strcpy(list[count].path, path);
+    list[count].kind = kind;
+    return count + 1;
+}
+
+// Scan one directory: the first BIOS found wins, every disc image and
+// PS-X EXE is collected for the boot picker
+static int scanMedia(const char *dir, char *bios, MediaEntry *games, int count) {
     DIR *d = opendir(dir);
     if (!d) {
-        return;
+        return count;
     }
-
-    char bin[MEDIA_PATH_MAX] = "";
-    char cue[MEDIA_PATH_MAX] = "";
 
     struct dirent *entry;
     while ((entry = readdir(d))) {
@@ -184,22 +198,18 @@ static void scanMedia(const char *dir, char *bios, char *game, char *exe) {
                 break;
 
             case MEDIA_EXE:
-                if (!exe[0]) {
-                    strcpy(exe, path);
-                }
+                count = addEntry(games, count, path, MEDIA_EXE);
                 break;
 
             case MEDIA_DISC:
-                if (!bin[0]) {
-                    strcpy(bin, path);
-                }
+                count = addEntry(games, count, path, MEDIA_DISC);
                 break;
 
             case MEDIA_CUE:
-                if (!cue[0]) {
+                {
                     char ref[MEDIA_PATH_MAX];
                     if (cueDataFile(path, ref, sizeof(ref)) && classify(ref) == MEDIA_DISC) {
-                        strcpy(cue, ref);
+                        count = addEntry(games, count, ref, MEDIA_DISC);
                     }
                 }
                 break;
@@ -210,10 +220,7 @@ static void scanMedia(const char *dir, char *bios, char *game, char *exe) {
     }
     closedir(d);
 
-    // The cue sheet names the true data file; prefer it over a bare image
-    if (!game[0]) {
-        strcpy(game, cue[0] ? cue : bin);
-    }
+    return count;
 }
 #endif // __KOS__
 
@@ -228,17 +235,17 @@ int main(int argc, char **argv) {
     // Set up the emulator display at the Dreamcast's native 640x480
     draw.init(DC_SCREEN_W, DC_SCREEN_H, 1);
 
-    // Look for a BIOS, a disc image and homebrew on the romdisk first,
+    // Look for a BIOS, disc images and homebrew on the romdisk first,
     // then the GD-ROM. Extra roots can be passed as arguments (dc-load).
     static char biosPath[MEDIA_PATH_MAX] = "";
-    static char gamePath[MEDIA_PATH_MAX] = "";
-    static char  exePath[MEDIA_PATH_MAX] = "";
+    static MediaEntry games[MEDIA_MAX_ENTRIES];
+    int gameCount = 0;
 
     for (int i = 1; i < argc; i++) {
-        scanMedia(argv[i], biosPath, gamePath, exePath);
+        gameCount = scanMedia(argv[i], biosPath, games, gameCount);
     }
-    scanMedia("/rd", biosPath, gamePath, exePath);
-    scanMedia("/cd", biosPath, gamePath, exePath);
+    gameCount = scanMedia("/rd", biosPath, games, gameCount);
+    gameCount = scanMedia("/cd", biosPath, games, gameCount);
 
     if (!biosPath[0]) {
         printf("PSeudo: BIOS not found. Place a 512KB BIOS dump (e.g. SCPH1001.BIN)\n");
@@ -246,19 +253,27 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    // One choice boots straight away; several bring up the picker
+    int pick = gameCount == 1 ? 0 : -1;
+    if (gameCount > 1) {
+        pick = menuPickGame(games, gameCount);
+    }
+
     printf("Loading BIOS: %s\n", biosPath);
     psx.init(biosPath);
 
-    if (gamePath[0]) {
-        printf("Loading game: %s\n", gamePath);
-        psx.iso(gamePath);
-    }
-    else if (exePath[0]) {
-        printf("Loading executable: %s\n", exePath);
-        psx.executable(exePath);
+    if (pick >= 0) {
+        if (games[pick].kind == MEDIA_DISC) {
+            printf("Loading game: %s\n", games[pick].path);
+            psx.iso(games[pick].path);
+        }
+        else {
+            printf("Loading executable: %s\n", games[pick].path);
+            psx.executable(games[pick].path);
+        }
     }
     else {
-        printf("PSeudo: No game image found. Running BIOS shell.\n");
+        printf("PSeudo: No game selected. Running BIOS shell.\n");
     }
 
     // Launch the CPU and audio threads
