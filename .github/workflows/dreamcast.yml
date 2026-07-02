@@ -47,7 +47,14 @@ jobs:
             . /opt/toolchains/dc/kos/environ.sh
           fi
           make -C Platforms/Dreamcast
-          file Platforms/Dreamcast/pseudo-dreamcast.elf
+
+      - name: Verify SH4 ELF
+        shell: bash
+        run: |
+          readelf=/opt/toolchains/dc/sh-elf/bin/sh-elf-readelf
+          [ -x "$readelf" ] || readelf=readelf
+          "$readelf" -h Platforms/Dreamcast/pseudo-dreamcast.elf | tee elf-header.txt
+          grep -q "Renesas / SuperH SH" elf-header.txt
 
       - uses: actions/upload-artifact@v4
         with:
