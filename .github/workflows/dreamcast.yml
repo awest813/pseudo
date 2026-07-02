@@ -1,0 +1,55 @@
+name: Dreamcast
+
+on:
+  push:
+    paths:
+      - 'Source/**'
+      - 'Platforms/Dreamcast/**'
+      - '.github/workflows/dreamcast.yml'
+  pull_request:
+    paths:
+      - 'Source/**'
+      - 'Platforms/Dreamcast/**'
+      - '.github/workflows/dreamcast.yml'
+
+jobs:
+  host-check:
+    name: Host check (stubbed KOS/GLdc/ALdc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build against stub headers
+        run: make -C Platforms/Dreamcast
+
+      - name: Smoke test
+        # Without media the emulator must report the missing BIOS and exit 1
+        run: |
+          set +e
+          out=$(./Platforms/Dreamcast/pseudo-dreamcast.host)
+          code=$?
+          set -e
+          echo "$out"
+          test $code -eq 1
+          echo "$out" | grep -q "BIOS not found"
+
+  dreamcast-elf:
+    name: Dreamcast build (KOS + kos-ports)
+    runs-on: ubuntu-latest
+    container: ghcr.io/kos-builds/kos-ports-dc:latest-stable
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cross-compile
+        shell: bash
+        run: |
+          if [ -z "$KOS_BASE" ] && [ -f /opt/toolchains/dc/kos/environ.sh ]; then
+            . /opt/toolchains/dc/kos/environ.sh
+          fi
+          make -C Platforms/Dreamcast
+          file Platforms/Dreamcast/pseudo-dreamcast.elf
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pseudo-dreamcast.elf
+          path: Platforms/Dreamcast/pseudo-dreamcast.elf

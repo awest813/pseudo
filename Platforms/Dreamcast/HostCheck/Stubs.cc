@@ -49,6 +49,7 @@ void glLoadIdentity(void)                             { }
 void glScalef(GLfloat, GLfloat, GLfloat)              { }
 void glOrtho(GLdouble, GLdouble, GLdouble, GLdouble, GLdouble, GLdouble) { }
 void glViewport(GLint, GLint, GLsizei, GLsizei)       { }
+void glScissor(GLint, GLint, GLsizei, GLsizei)        { }
 
 void glGenTextures(GLsizei n, GLuint *textures) {
     static GLuint next = 1;

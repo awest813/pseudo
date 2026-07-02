@@ -84,6 +84,11 @@ class CstrDraw {
         sh startX, endX;
         sh startY, endY;
     } texWindow;
+
+    // Draw Area, in VRAM coordinates (used for scissor-based clipping)
+    struct {
+        sh x1, y1, x2, y2;
+    } drawArea;
     
     // Setup opaque values
     const struct {
@@ -103,6 +108,7 @@ class CstrDraw {
     void opaqueClipState(bool);
     ub opaqueFunc(ub);
     void setDrawArea(int, uw);
+    void applyScissor();
     void updateTextureState(uw);
     
 public:

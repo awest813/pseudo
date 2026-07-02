@@ -72,6 +72,10 @@ typedef double         GLclampd;
 #define GL_DECAL                        0x2101
 #define GL_REPLACE                      0x1E01
 
+/* Scissor box */
+#define GL_SCISSOR_TEST                 0x0C11
+#define GL_SCISSOR_BOX                  0x0C10
+
 /* Clip planes: GLdc defines the constants but has no glClipPlane */
 #define GL_CLIP_PLANE0                  0x3000
 #define GL_CLIP_PLANE1                  0x3001
@@ -114,6 +118,7 @@ void glOrtho(GLdouble left, GLdouble right,
              GLdouble bottom, GLdouble top,
              GLdouble znear, GLdouble zfar);
 void glViewport(GLint x, GLint y, GLsizei width, GLsizei height);
+void glScissor(GLint x, GLint y, GLsizei width, GLsizei height);
 
 void glGenTextures(GLsizei n, GLuint *textures);
 void glDeleteTextures(GLsizei n, GLuint *textures);
