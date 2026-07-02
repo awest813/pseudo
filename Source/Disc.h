@@ -13,7 +13,7 @@ public:
     bool open(const char *);
     bool exists();
     void fetchTN(ub *);
-    void fetchTD(ub *);
+    void fetchTD(ub, ub *);
     bool trackRead(ub *);
 };
 
