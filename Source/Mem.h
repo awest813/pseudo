@@ -21,7 +21,14 @@ public:
     heap ram, rom, hwr;
     
     CstrMem() {
+#ifdef DREAMCAST
+        // 2MB, the real PSX RAM size: the power-of-two address mask then
+        // aliases the RAM mirrors like actual hardware, and the smaller
+        // heap fits the Dreamcast's 16MB of main memory
+        ram.ptr = new ub[ram.size = 0x200000];
+#else
         ram.ptr = new ub[ram.size = 0x800000];
+#endif
         rom.ptr = new ub[rom.size = 0x80000];
         hwr.ptr = new ub[hwr.size = 0x4000];
     }

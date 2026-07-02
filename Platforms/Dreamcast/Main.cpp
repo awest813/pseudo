@@ -20,7 +20,8 @@ static void *audio_thread(void *arg) {
 }
 
 // Poll the Dreamcast controller and forward button changes to the SIO layer.
-// KOS button bits are active-low (0 = pressed, 1 = released).
+// cont_state_t.buttons is active-high: the maple driver normalizes the
+// active-low wire format, so a set bit means the button is pressed.
 // The upper bits of *prev store the previous digital state of the analog
 // triggers: bit 16 = left trigger, bit 17 = right trigger.
 static void poll_controller(uw *prev) {
@@ -34,14 +35,13 @@ static void poll_controller(uw *prev) {
         return;
     }
 
-    // Digital buttons (active-low in the KOS bitmask)
+    // Digital buttons
     uint16_t cur_buttons = (uint16_t)state->buttons;
     uint16_t changed = (uint16_t)(*prev & 0xffff) ^ cur_buttons;
     for (int i = 0; i < 16; i++) {
         uint16_t bit = (uint16_t)(1 << i);
         if (changed & bit) {
-            // pushed = true when bit transitions 1->0 (button pressed)
-            sio.padListener((int)bit, !(cur_buttons & bit));
+            sio.padListener((int)bit, (cur_buttons & bit) != 0);
         }
     }
 
@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
 
     // Main loop: poll controller and yield to other threads.
     // Upper bits of prev_buttons hold the previous digital trigger state.
-    uw prev_buttons = 0xffff; // All digital bits high = no buttons pressed
+    uw prev_buttons = 0; // Active-high: no bits set = no buttons pressed
     while (!psx.suspended) {
         poll_controller(&prev_buttons);
         thd_pass();

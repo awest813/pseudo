@@ -1,10 +1,16 @@
 #ifndef PSEUDO_DREAMCAST_GLOBAL_H
 #define PSEUDO_DREAMCAST_GLOBAL_H
 
+// The KOS toolchain defines _arch_dreamcast / __DREAMCAST__, not __KOS__
+#if (defined(_arch_dreamcast) || defined(__DREAMCAST__)) && !defined(__KOS__)
+#define __KOS__ 1
+#endif
+
 #ifdef __KOS__
 #include <kos.h>
 #include <dc/maple.h>
 #include <dc/maple/controller.h>
+#include <GL/glkos.h>
 #else
 #include <cstdio>
 #include <cstdlib>

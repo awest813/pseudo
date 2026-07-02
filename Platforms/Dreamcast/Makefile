@@ -1,47 +1,58 @@
-KOS_BASE   ?= /opt/dc/kos
-TARGET     := pseudo-dreamcast
+# PSeudo — Sega Dreamcast port
+#
+# Dreamcast build (produces pseudo-dreamcast.elf):
+#   Source the KOS environment first (e.g. `. /opt/toolchains/dc/kos/environ.sh`),
+#   then run `make`. Requires the kos-ports packages libGL (GLdc) and
+#   libAL (ALdc). Files placed in romdisk/ (e.g. the SCPH1001.BIN BIOS)
+#   are baked into the binary and show up under /rd at runtime.
+#
+# Host check build (produces pseudo-dreamcast.host):
+#   Run `make` without the KOS environment. Compiles and links every
+#   emulator source with -DDREAMCAST against the stub KOS/GLdc/ALdc
+#   headers in HostCheck/, catching porting regressions on a PC.
+
 SOURCE_DIR := ../../Source
 
-CXX ?= g++
+CORE_SRCS := Bus CD Counters Disc Draw GTE Graphics Hardware MDEC Mem \
+             PSeudo R3000A SIO Sound TextureCache
 
-ifeq ($(wildcard $(KOS_BASE)/bin/sh-elf-g++),$(KOS_BASE)/bin/sh-elf-g++)
+ifneq ($(wildcard $(KOS_BASE)/Makefile.rules),)
 # ---------------------------------------------------------------------------
 # KOS (Dreamcast) build
 # ---------------------------------------------------------------------------
-CXX      := $(KOS_BASE)/bin/sh-elf-g++
-CXXFLAGS += -DDREAMCAST \
-            -I$(KOS_BASE)/include \
-            -I$(KOS_BASE)/../kos-ports/include \
-            -I$(SOURCE_DIR) \
-            -I.
-LDFLAGS  += -L$(KOS_BASE)/lib \
-            -L$(KOS_BASE)/../kos-ports/lib \
-            -lGLdc -lopenal
-TARGET   := $(TARGET).elf
-SOURCES  := Main.cpp \
-            $(SOURCE_DIR)/Bus.cc \
-            $(SOURCE_DIR)/CD.cc \
-            $(SOURCE_DIR)/Counters.cc \
-            $(SOURCE_DIR)/Disc.cc \
-            $(SOURCE_DIR)/Draw.cc \
-            $(SOURCE_DIR)/GTE.cc \
-            $(SOURCE_DIR)/Graphics.cc \
-            $(SOURCE_DIR)/Hardware.cc \
-            $(SOURCE_DIR)/MDEC.cc \
-            $(SOURCE_DIR)/Mem.cc \
-            $(SOURCE_DIR)/PSeudo.cc \
-            $(SOURCE_DIR)/R3000A.cc \
-            $(SOURCE_DIR)/SIO.cc \
-            $(SOURCE_DIR)/Sound.cc \
-            $(SOURCE_DIR)/TextureCache.cc
+TARGET := pseudo-dreamcast.elf
+OBJS   := Main.o $(addprefix $(SOURCE_DIR)/,$(addsuffix .o,$(CORE_SRCS))) \
+          romdisk.o
+
+KOS_ROMDISK_DIR := romdisk
+
+# -Wno-changes-meaning: GTE.h fields legitimately shadow the uw/uh/ub
+# typedef names, which GCC 13+ rejects in class scope by default
+CXXFLAGS += -DDREAMCAST -I$(SOURCE_DIR) -I. -Wno-changes-meaning
+
+all: $(TARGET)
+
+include $(KOS_BASE)/Makefile.rules
+
+$(TARGET): $(OBJS)
+	kos-c++ -o $(TARGET) $(OBJS) -lGL -lAL
+
+clean:
+	-rm -f $(TARGET) $(OBJS) romdisk.img
+
+.PHONY: all clean
 else
 # ---------------------------------------------------------------------------
-# Host build (for basic compilation checks without the KOS toolchain)
+# Host check build (no KOS toolchain)
 # ---------------------------------------------------------------------------
-CXXFLAGS += -std=c++17 -Wall -Wextra -I.
-TARGET   := $(TARGET).host
-SOURCES  := Main.cpp
-endif
+CXX    ?= g++
+TARGET := pseudo-dreamcast.host
+
+SOURCES := Main.cpp HostCheck/Stubs.cc \
+           $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
+
+CXXFLAGS += -std=gnu++17 -Wall -DDREAMCAST -D__KOS__ \
+            -IHostCheck -I$(SOURCE_DIR) -I. -Wno-changes-meaning
 
 all: $(TARGET)
 
@@ -52,6 +63,7 @@ run: $(TARGET)
 	./$(TARGET)
 
 clean:
-	rm -f $(TARGET)
+	-rm -f $(TARGET)
 
 .PHONY: all run clean
+endif

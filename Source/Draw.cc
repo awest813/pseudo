@@ -11,20 +11,30 @@ void CstrDraw::init(sh w, sh h, int multiplier) {
     window.multiplier = multiplier;
     
     // OpenGL
+#ifdef DREAMCAST
+    // No HiDPI on the Dreamcast: viewport matches the native resolution
+    GLViewport(0, 0, window.h, window.v);
+#else
     GLViewport(0, 0, window.h * 2, window.v * 2);
+#endif
     GLClearColor(0.1, 0.1, 0.1, 0);
     GLClear(GL_COLOR_BUFFER_BIT);
-    
+
     if (window.multiplier > 1) { // Crap
         GLLineWidth(window.multiplier);
     }
-    
+
     // Textures
     GLMatrixMode(GL_TEXTURE);
     GLID();
     GLScalef(1.0 / 256, 1.0 / 256, 1.0);
+#ifdef DREAMCAST
+    // GLdc has no texture combiners; modulate is the closest match
+    GLTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+#else
     GLTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
     GLTexEnvi(GL_TEXTURE_ENV, GL_RGB_SCALE, 2);
+#endif
     
     tcache.createTexture(&fb24tex, FRAME_W, FRAME_H); // 24-bit texture
     tcache.createTexture(&fb16tex, FRAME_W, FRAME_H); // 16-bit texture
@@ -493,8 +503,12 @@ void CstrDraw::updateVRAMView() {
     GLMatrixMode(GL_TEXTURE);
     GLID();
     GLScalef(1.0 / FRAME_W, 1.0 / FRAME_H, 1.0);
+#ifdef DREAMCAST
+    GLTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+#else
     GLTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
     GLTexEnvi(GL_TEXTURE_ENV, GL_RGB_SCALE, 2);
+#endif
     
     GLEnable(GL_TEXTURE_2D);
     tcache.createTexture(&fbVram, FRAME_W, FRAME_H);

@@ -4,8 +4,14 @@
 class CstrDraw {
     enum {
         COLOR_MAX  = 255,
+#ifdef DREAMCAST
+        // GLdc modulates without the ×2 combiner scale, so the neutral
+        // texture color is full white instead of half
+        COLOR_HALF = 255,
+#else
         COLOR_HALF = 128,
-        
+#endif
+
         LINE_TERM_CODE = 0x55555555
     };
     

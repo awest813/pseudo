@@ -57,7 +57,7 @@ void CstrMips::setpc(uw addr) {
         instCache = (uw *)&mem.rom.ptr[addr & 0x000fffff];
     }
     else {
-        instCache = (uw *)&mem.ram.ptr[addr & 0x00ffffff];
+        instCache = (uw *)&mem.ram.ptr[addr & (mem.ram.size - 1)];
     }
 }
 
