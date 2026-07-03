@@ -14,7 +14,10 @@ class CstrCounters {
                 uh irqWhenBounds      : 1;
                 uh                    : 2;
                 uh clockSource        : 2;
-                uh                    : 6;
+                uh                    : 1;
+                uh reachedDest        : 1; // Set on target hit, cleared on mode read
+                uh reachedBounds      : 1; // Set on 0xffff overflow, cleared on mode read
+                uh                    : 3;
             };
             
             uh data;
