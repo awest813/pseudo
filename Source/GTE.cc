@@ -190,11 +190,16 @@
 #define op \
     (code & 0x1ffffff)
 
-/* unused for now */
-#define F( a) (a)
-#define A1(a) (a)
-#define A2(a) (a)
-#define A3(a) (a)
+// MAC arithmetic overflow flags, checked on the post-shift result:
+// F  -> MAC0 overflow, bits 16 (positive) / 15 (negative)
+// A1 -> MAC1 overflow, bits 30 / 27
+// A2 -> MAC2 overflow, bits 29 / 26
+// A3 -> MAC3 overflow, bits 28 / 25
+// The MAC1-3 bits mirror into the master error bit 31, MAC0's do not
+#define F( a) bounds((a), SETF(16)           , SETF(15))
+#define A1(a) bounds((a), SETF(30) | SETF(31), SETF(27) | SETF(31))
+#define A2(a) bounds((a), SETF(29) | SETF(31), SETF(26) | SETF(31))
+#define A3(a) bounds((a), SETF(28) | SETF(31), SETF(25) | SETF(31))
 
 
 CstrCop2 cop2;
@@ -202,6 +207,12 @@ CstrCop2 cop2;
 void CstrCop2::reset() {
     cop2c = { 0 };
     cop2d = { 0 };
+}
+
+sd CstrCop2::bounds(sd value, uw posFlag, uw negFlag) {
+    if (value > INT32_MAX) FLAG |= posFlag;
+    if (value < INT32_MIN) FLAG |= negFlag;
+    return value;
 }
 
 uw CstrCop2::limE(uw result) {
@@ -345,8 +356,8 @@ void CstrCop2::execute(uw code) {
                 
                 for (int v = 0; v < 3; v++) {
                     MAC1 = A1((((sd)R0 << 16) + ((sd)IR0 * (limB1(RFC - (R0 << 4), 0)))) >> 12);
-                    MAC2 = A2((((sd)G0 << 16) + ((sd)IR0 * (limB1(GFC - (G0 << 4), 0)))) >> 12);
-                    MAC3 = A3((((sd)B0 << 16) + ((sd)IR0 * (limB1(BFC - (B0 << 4), 0)))) >> 12);
+                    MAC2 = A2((((sd)G0 << 16) + ((sd)IR0 * (limB2(GFC - (G0 << 4), 0)))) >> 12);
+                    MAC3 = A3((((sd)B0 << 16) + ((sd)IR0 * (limB3(BFC - (B0 << 4), 0)))) >> 12);
                     
                     MAC2RGB4();
                 }
@@ -621,8 +632,8 @@ void CstrCop2::execute(uw code) {
                 FLAG = 0;
                 
                 MAC1 = A1(RIR1 + ((IR0 * limB1(RFC - RIR1, 0)) >> 12));
-                MAC2 = A2(GIR2 + ((IR0 * limB1(GFC - GIR2, 0)) >> 12));
-                MAC3 = A3(BIR3 + ((IR0 * limB1(BFC - BIR3, 0)) >> 12));
+                MAC2 = A2(GIR2 + ((IR0 * limB2(GFC - GIR2, 0)) >> 12));
+                MAC3 = A3(BIR3 + ((IR0 * limB3(BFC - BIR3, 0)) >> 12));
                 
                 MAC2IR(lm);
                 

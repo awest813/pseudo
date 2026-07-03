@@ -26,7 +26,7 @@ void CstrHardware::write(uw addr, T data) {
                     dicr = (dicr & (~((data & 0xff000000) | 0xffffff))) | (data & 0xffffff);
                     return;
                     
-                case 0x1104 ... 0x1124: // Rootcounters
+                case 0x1100 ... 0x1128: // Rootcounters
                     rootc.write(addr, data);
                     return;
                     
@@ -117,7 +117,7 @@ T CstrHardware::read(uw addr) {
     switch(sizeof(T)) {
         case HWR_ACCESS_32:
             switch(LOW_BITS(addr)) {
-                case 0x1100 ... 0x1110: // Rootcounters
+                case 0x1100 ... 0x1128: // Rootcounters
                     return rootc.read(addr);
                     
                 case 0x1810 ... 0x1814: // Graphics

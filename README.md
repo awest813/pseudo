@@ -24,8 +24,8 @@ Here's a list with the overall progress of the emulator, broken down in distinct
 * `70% -> GPU Primitives & Commands`
 * `65% -> GPU Textures`
 * `60% -> Audio`
-* `60% -> GTE`
-* `55% -> Rootcounters`
+* `65% -> GTE`
+* `60% -> Rootcounters`
 * `25% -> Serial IO`
 * `10% -> XA Audio`
 
