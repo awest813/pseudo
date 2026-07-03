@@ -22,6 +22,9 @@ jobs:
       - name: Build against stub headers
         run: make -C Platforms/Dreamcast
 
+      - name: GTE unit tests
+        run: make -C Tests run
+
       - name: Smoke test
         # Without media the emulator must report the missing BIOS and exit 1
         run: |
