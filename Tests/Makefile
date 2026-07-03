@@ -14,16 +14,23 @@ CXX      ?= g++
 CXXFLAGS += -std=gnu++17 -Wall -O2 -DDREAMCAST -D__KOS__ \
             -I$(DC_DIR)/HostCheck -I$(SOURCE_DIR) -Wno-changes-meaning
 
-all: gte-test
+TESTS := gte-test cpu-test
+
+all: $(TESTS)
 
 gte-test: GTE.cc $(DC_DIR)/HostCheck/Stubs.cc \
           $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-run: gte-test
+cpu-test: CPU.cc $(DC_DIR)/HostCheck/Stubs.cc \
+          $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+run: $(TESTS)
 	./gte-test
+	./cpu-test
 
 clean:
-	-rm -f gte-test
+	-rm -f $(TESTS)
 
 .PHONY: all run clean

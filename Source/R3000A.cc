@@ -171,13 +171,19 @@ void CstrMips::step(bool branched) {
                     return;
                     
                 case 26: // DIV
-                    if (base[rt]) {
-                        res.s32[0] = (sw)base[rs] / (sw)base[rt];
-                        res.s32[1] = (sw)base[rs] % (sw)base[rt];
-                    }
-                    else {
+                    if (base[rt] == 0) {
                         res.u32[0] = (sw)base[rs] >= 0 ? 0xffffffff : 1;
                         res.u32[1] = (sw)base[rs];
+                    }
+                    else if (base[rs] == 0x80000000 && base[rt] == 0xffffffff) {
+                        // INT_MIN / -1 overflows: C++ UB (SIGFPE on x86),
+                        // the R3000 leaves lo = 0x80000000, hi = 0
+                        res.u32[0] = 0x80000000;
+                        res.u32[1] = 0;
+                    }
+                    else {
+                        res.s32[0] = (sw)base[rs] / (sw)base[rt];
+                        res.s32[1] = (sw)base[rs] % (sw)base[rt];
                     }
                     return;
                     
