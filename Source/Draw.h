@@ -4,8 +4,14 @@
 class CstrDraw {
     enum {
         COLOR_MAX  = 255,
+#ifdef DREAMCAST
+        // GLdc modulates without the ×2 combiner scale, so the neutral
+        // texture color is full white instead of half
+        COLOR_HALF = 255,
+#else
         COLOR_HALF = 128,
-        
+#endif
+
         LINE_TERM_CODE = 0x55555555
     };
     
@@ -78,6 +84,11 @@ class CstrDraw {
         sh startX, endX;
         sh startY, endY;
     } texWindow;
+
+    // Draw Area, in VRAM coordinates (used for scissor-based clipping)
+    struct {
+        sh x1, y1, x2, y2;
+    } drawArea;
     
     // Setup opaque values
     const struct {
@@ -97,6 +108,7 @@ class CstrDraw {
     void opaqueClipState(bool);
     ub opaqueFunc(ub);
     void setDrawArea(int, uw);
+    void applyScissor();
     void updateTextureState(uw);
     
 public:

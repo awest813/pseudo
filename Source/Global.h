@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
+#include <ctype.h>
 
 #ifdef APPLE_MACOS
     #include <mach/mach_time.h>
@@ -30,9 +31,15 @@
     #define MIN(a, b)       (((a) < (b)) ? (a) : (b))
     #define MAX(a, b)       (((a) > (b)) ? (a) : (b))
 #elif  DREAMCAST
+    // The KOS toolchain defines _arch_dreamcast / __DREAMCAST__, not __KOS__
+    #if (defined(_arch_dreamcast) || defined(__DREAMCAST__)) && !defined(__KOS__)
+        #define __KOS__ 1
+    #endif
+
     #ifdef __KOS__
         #include <kos.h>
         #include <GL/gl.h>
+        #include <GL/glkos.h>
         #include <AL/al.h>
         #include <AL/alc.h>
     #else
@@ -92,6 +99,14 @@ typedef int8_t  sb; // byte
 // OpenGLES 1.0
 #define GLClipPlanef        glClipPlanef
 #define GLOrthof            glOrthof
+
+// GLdc has no short-typed immediate-mode entry points; use the float ones
+#if defined(DREAMCAST) && defined(__KOS__)
+    #undef  GLTexCoord2s
+    #undef  GLVertex2s
+    #define GLTexCoord2s(u, v)  glTexCoord2f((GLfloat)(u), (GLfloat)(v))
+    #define GLVertex2s(x, y)    glVertex2f((GLfloat)(x), (GLfloat)(y))
+#endif
 
 // OpenAL
 #define alSourceStream      alSourcePlay

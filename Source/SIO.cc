@@ -85,6 +85,8 @@ void CstrSerial::padListener(int code, bool pushed) {
     // L/R analog triggers converted to digital L1/R1 via synthetic bits
     if (code & DC_BTN_LTRIG)     { btnCheck(PAD_BTN_L1);       }
     if (code & DC_BTN_RTRIG)     { btnCheck(PAD_BTN_R1);       }
+    // Both triggers + Start (no Select button on Dreamcast pads)
+    if (code & DC_BTN_SELECT)    { btnCheck(PAD_BTN_SELECT);   }
 #endif
 }
 

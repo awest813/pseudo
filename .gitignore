@@ -8,3 +8,4 @@ Platforms/Windows/PSeudo.VC.db
 Platforms/Windows/PSeudo.VC.VC.opendb
 Platforms/Windows/x64
 Platforms/Windows/Libraries
+Source/*.o

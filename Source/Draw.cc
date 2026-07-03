@@ -11,20 +11,30 @@ void CstrDraw::init(sh w, sh h, int multiplier) {
     window.multiplier = multiplier;
     
     // OpenGL
+#ifdef DREAMCAST
+    // No HiDPI on the Dreamcast: viewport matches the native resolution
+    GLViewport(0, 0, window.h, window.v);
+#else
     GLViewport(0, 0, window.h * 2, window.v * 2);
+#endif
     GLClearColor(0.1, 0.1, 0.1, 0);
     GLClear(GL_COLOR_BUFFER_BIT);
-    
+
     if (window.multiplier > 1) { // Crap
         GLLineWidth(window.multiplier);
     }
-    
+
     // Textures
     GLMatrixMode(GL_TEXTURE);
     GLID();
     GLScalef(1.0 / 256, 1.0 / 256, 1.0);
+#ifdef DREAMCAST
+    // GLdc has no texture combiners; modulate is the closest match
+    GLTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+#else
     GLTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
     GLTexEnvi(GL_TEXTURE_ENV, GL_RGB_SCALE, 2);
+#endif
     
     tcache.createTexture(&fb24tex, FRAME_W, FRAME_H); // 24-bit texture
     tcache.createTexture(&fb16tex, FRAME_W, FRAME_H); // 16-bit texture
@@ -33,9 +43,10 @@ void CstrDraw::init(sh w, sh h, int multiplier) {
 }
 
 void CstrDraw::reset() {
-    res    = { 0 };
-    offset = { 0 };
-    
+    res      = { 0 };
+    offset   = { 0 };
+    drawArea = { 0, 0, FRAME_W - 1, FRAME_H - 1 };
+
     opaqueClipState(true);
     
     // Redraw
@@ -50,9 +61,35 @@ void CstrDraw::swapBuffers() {
     GLOrtho(vs.dispOffsetX * 2, res.h + vs.dispOffsetX * 2, res.v + vs.dispOffsetY, vs.dispOffsetY, 1, -1);
 //    GLFlush();
 #ifdef DREAMCAST
+    // The scissor box depends on the display offset baked into the ortho
+    applyScissor();
     glKosSwapBuffers();
 #else
     glFinish();
+#endif
+}
+
+// Clip the draw area with the scissor test: transform its VRAM-space
+// bounds through the display ortho into window coordinates. The GL
+// scissor origin is the lower-left corner, our ortho is top-down.
+void CstrDraw::applyScissor() {
+#ifdef DREAMCAST
+    if (res.h <= 0 || res.v <= 0) {
+        return;
+    }
+
+    const int left = vs.dispOffsetX * 2;
+    const int top  = vs.dispOffsetY;
+
+    int x = ((drawArea.x1 - left) * window.h) / res.h;
+    int y = ((drawArea.y1 - top ) * window.v) / res.v;
+    int w = ((drawArea.x2 - drawArea.x1 + 1) * window.h) / res.h;
+    int h = ((drawArea.y2 - drawArea.y1 + 1) * window.v) / res.v;
+
+    if (w < 0) w = 0;
+    if (h < 0) h = 0;
+
+    glScissor(x, window.v - (y + h), w, h);
 #endif
 }
 
@@ -95,7 +132,9 @@ void CstrDraw::keepAspectRatio(sh w, sh h, int multiplier) {
 void CstrDraw::opaqueClipState(bool enable) {
     if (enable) {
         GLEnable(GL_BLEND);
-#ifndef DREAMCAST
+#ifdef DREAMCAST
+        GLEnable(GL_SCISSOR_TEST);
+#else
         GLEnable(GL_CLIP_PLANE0);
         GLEnable(GL_CLIP_PLANE1);
         GLEnable(GL_CLIP_PLANE2);
@@ -104,7 +143,9 @@ void CstrDraw::opaqueClipState(bool enable) {
     }
     else {
         GLDisable(GL_BLEND);
-#ifndef DREAMCAST
+#ifdef DREAMCAST
+        GLDisable(GL_SCISSOR_TEST);
+#else
         GLDisable(GL_CLIP_PLANE0);
         GLDisable(GL_CLIP_PLANE1);
         GLDisable(GL_CLIP_PLANE2);
@@ -154,7 +195,16 @@ void CstrDraw::setDrawArea(int plane, uw data) {
     GLClipPlanef(GL_CLIP_PLANE0 + (plane + 0), (float *)e1);
     GLClipPlanef(GL_CLIP_PLANE0 + (plane + 1), (float *)e2);
 #elif DREAMCAST
-    // glClipPlane not supported by GLdc; draw-area clipping is a TODO
+    // GLdc has no clip planes; clip the draw area with the scissor test
+    if (plane) {
+        drawArea.x2 = (data)       & 0x3ff;
+        drawArea.y2 = (data >> 10) & 0x1ff;
+    }
+    else {
+        drawArea.x1 = (data)       & 0x3ff;
+        drawArea.y1 = (data >> 10) & 0x1ff;
+    }
+    applyScissor();
     (void)e1; (void)e2;
 #endif
 }
@@ -493,8 +543,12 @@ void CstrDraw::updateVRAMView() {
     GLMatrixMode(GL_TEXTURE);
     GLID();
     GLScalef(1.0 / FRAME_W, 1.0 / FRAME_H, 1.0);
+#ifdef DREAMCAST
+    GLTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+#else
     GLTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE);
     GLTexEnvi(GL_TEXTURE_ENV, GL_RGB_SCALE, 2);
+#endif
     
     GLEnable(GL_TEXTURE_2D);
     tcache.createTexture(&fbVram, FRAME_W, FRAME_H);

@@ -252,7 +252,7 @@ void CstrCD::interrupt() {
             ret.status = CD_STAT_ACKNOWLEDGE;
             ret.statp |= 0x02;
             result.data[0] = ret.statp;
-            disc.fetchTD(result.td);
+            disc.fetchTD(BCD2INT(param.data[0]), result.td);
             result.data[1] = INT2BCD(result.td[2]);
             result.data[2] = INT2BCD(result.td[1]);
             result.data[3] = INT2BCD(result.td[0]);

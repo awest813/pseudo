@@ -1,0 +1,6 @@
+pseudo-dreamcast.host
+pseudo-dreamcast.elf
+*.o
+romdisk.img
+romdisk/*
+!romdisk/README.txt

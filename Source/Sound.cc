@@ -118,6 +118,11 @@ void CstrAudio::decodeStream() {
         
         while(--processed < 0) {
             freeBuffers();
+#ifdef DREAMCAST
+            // Yield instead of busy-spinning while waiting for a buffer
+            // to finish playing, so the CPU thread gets the timeslice
+            thd_pass();
+#endif
             alGetSourcei(source, AL_BUFFERS_PROCESSED, &processed);
         }
         
