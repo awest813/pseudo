@@ -22,6 +22,7 @@ void *maple_dev_status(maple_device_t *)              { return 0; }
 kthread_t *thd_create(int, void *(*)(void *), void *) { return 0; }
 int thd_join(kthread_t *, void **)                    { return 0; }
 void thd_pass(void)                                   { }
+void thd_sleep(int)                                   { }
 
 /* A checkerboard glyph is enough for compile/link checking */
 unsigned char *bfont_find_char(unsigned int) {

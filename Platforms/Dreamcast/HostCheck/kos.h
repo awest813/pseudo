@@ -27,6 +27,7 @@ typedef struct kthread kthread_t;
 kthread_t *thd_create(int detach, void *(*routine)(void *), void *param);
 int thd_join(kthread_t *thd, void **value_ptr);
 void thd_pass(void);
+void thd_sleep(int ms);
 
 #ifdef __cplusplus
 }

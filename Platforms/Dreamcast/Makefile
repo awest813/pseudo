@@ -27,16 +27,22 @@ OBJS   := Main.o Menu.o \
 
 KOS_ROMDISK_DIR := romdisk
 
+# -O3: the interpreter core is hot enough that this is worth an explicit
+# flag rather than trusting kos-c++'s default
+# -ffunction-sections -fdata-sections (+ --gc-sections at link): drops
+# unused code/data so more of the interpreter's hot path fits in the
+# SH4's small 8KB instruction cache
 # -Wno-changes-meaning: GTE.h fields legitimately shadow the uw/uh/ub
 # typedef names, which GCC 13+ rejects in class scope by default
-CXXFLAGS += -DDREAMCAST -I$(SOURCE_DIR) -I. -Wno-changes-meaning
+CXXFLAGS += -DDREAMCAST -I$(SOURCE_DIR) -I. -Wno-changes-meaning \
+            -O3 -ffunction-sections -fdata-sections
 
 all: $(TARGET)
 
 include $(KOS_BASE)/Makefile.rules
 
 $(TARGET): $(OBJS)
-	kos-c++ -o $(TARGET) $(OBJS) -lGL -lAL
+	kos-c++ -o $(TARGET) $(OBJS) -lGL -lAL -Wl,--gc-sections
 
 clean:
 	-rm -f $(TARGET) $(OBJS) romdisk.img
@@ -52,7 +58,7 @@ TARGET := pseudo-dreamcast.host
 SOURCES := Main.cpp Menu.cpp HostCheck/Stubs.cc \
            $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
 
-CXXFLAGS += -std=gnu++17 -Wall -DDREAMCAST -D__KOS__ \
+CXXFLAGS += -std=gnu++17 -Wall -O2 -DDREAMCAST -D__KOS__ \
             -IHostCheck -I$(SOURCE_DIR) -I. -Wno-changes-meaning
 
 all: $(TARGET)

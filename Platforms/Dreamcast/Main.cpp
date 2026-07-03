@@ -280,12 +280,15 @@ int main(int argc, char **argv) {
     kthread_t *t_cpu   = thd_create(0, cpu_thread,   NULL);
     kthread_t *t_audio = thd_create(0, audio_thread, NULL);
 
-    // Main loop: poll controller and yield to other threads.
+    // Main loop: poll the controller at a fixed ~100Hz rate rather than
+    // spinning on thd_pass() every reschedule. That would otherwise hit
+    // the maple bus and fight the CPU/audio threads for timeslices far
+    // more often than input actually needs to be sampled.
     // Upper bits of prev_buttons hold the previous digital trigger state.
     uw prev_buttons = 0; // Active-high: no bits set = no buttons pressed
     while (!psx.suspended) {
         poll_controller(&prev_buttons);
-        thd_pass();
+        thd_sleep(10);
     }
 
     thd_join(t_cpu,   NULL);
