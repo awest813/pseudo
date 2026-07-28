@@ -68,17 +68,20 @@ void CstrMips::bootstrap() {
 }
 
 #ifdef DREAMCAST
-// True when insn is LW from a register games spin on while waiting
-// for vsync (GPU status or IRQ stat).
+// True when insn loads a register games spin on while waiting
+// (GPU status, IRQ stat/mask). LW and LHU are both common.
 static bool loadsWaitReg(uw insn) {
-    if ((insn >> 26) != 35) {
+    const uw op = insn >> 26;
+    if (op != 35 && op != 37) { // LW / LHU
         return false;
     }
 
     const uw rnum = (insn >> 21) & 31;
-    const sw offs = (sw)(insn & 0xffff);
+    const sw offs = (sw)(sh)(insn & 0xffff); // sign-extend
     const uw iaddr = cpu.base[rnum] + offs;
-    return iaddr == 0x1f801814 || iaddr == 0x1f801070;
+    return iaddr == 0x1f801814  // GPUSTAT
+        || iaddr == 0x1f801070  // I_STAT
+        || iaddr == 0x1f801074; // I_MASK
 }
 #endif
 
@@ -125,8 +128,8 @@ void CstrMips::run() {
         // IRQ registers. Fast-forward emulated time when we see that
         // pattern so the SH4 is not spinning while waiting for vsync.
         if (sawHwPoll && (pcMax - pcMin) < 64) {
-            if (++idleBatches >= 4) {
-                const uw ff = threshold * 32;
+            if (++idleBatches >= 2) {
+                const uw ff = threshold * 48;
                 rootc.update(ff * 3);
                 vs.update(ff * 3);
                 cd.update(ff);
