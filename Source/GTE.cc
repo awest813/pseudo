@@ -287,18 +287,34 @@ void CstrCop2::execute(uw code) {
             
         case 1: // RTPS
             {
+                sw sh = _SF(op) * 12;
+                sw lm = _LM(op);
+
                 FLAG = 0;
                 
-                MAC1 = A1((((sd)TRX << 12) + (R11 * VX0) + (R12 * VY0) + (R13 * VZ0)) >> 12);
-                MAC2 = A2((((sd)TRY << 12) + (R21 * VX0) + (R22 * VY0) + (R23 * VZ0)) >> 12);
-                MAC3 = A3((((sd)TRZ << 12) + (R31 * VX0) + (R32 * VY0) + (R33 * VZ0)) >> 12);
-                
-                MAC2IR(0);
+                sd mac1 = ((sd)TRX << 12) + (R11 * VX0) + (R12 * VY0) + (R13 * VZ0);
+                sd mac2 = ((sd)TRY << 12) + (R21 * VX0) + (R22 * VY0) + (R23 * VZ0);
+                sd mac3 = ((sd)TRZ << 12) + (R31 * VX0) + (R32 * VY0) + (R33 * VZ0);
+
+                MAC1 = A1(mac1 >> sh);
+                MAC2 = A2(mac2 >> sh);
+                MAC3 = A3(mac3 >> sh);
+
+                IR1 = limB1(MAC1, lm);
+                IR2 = limB2(MAC2, lm);
+                // FLAG.22 from (mac3>>12) as lm=0; stored IR3 clamps MAC3 with lm
+                (void)limB3((sw)(mac3 >> 12), 0);
+                if (lm) {
+                    IR3 = MAC3 < 0 ? 0 : (MAC3 > 32767 ? 32767 : (sw)MAC3);
+                }
+                else {
+                    IR3 = MAC3 < -32768 ? -32768 : (MAC3 > 32767 ? 32767 : (sw)MAC3);
+                }
                 
                 SZ0 = SZ1;
                 SZ1 = SZ2;
                 SZ2 = SZ3;
-                SZ3 = limD(MAC3);
+                SZ3 = limD(mac3 >> 12);
                 
                 sw quotient = limE(divide(H, SZ3));
                 
@@ -314,6 +330,8 @@ void CstrCop2::execute(uw code) {
             
         case 48: // RTPT
             {
+                sw sh = _SF(op) * 12;
+                sw lm = _LM(op);
                 sw quotient = -1;
                 
                 FLAG = 0;
@@ -324,13 +342,25 @@ void CstrCop2::execute(uw code) {
                     sw v2 = VY(v);
                     sw v3 = VZ(v);
                     
-                    MAC1 = A1((((sd)TRX << 12) + (R11 * v1) + (R12 * v2) + (R13 * v3)) >> 12);
-                    MAC2 = A2((((sd)TRY << 12) + (R21 * v1) + (R22 * v2) + (R23 * v3)) >> 12);
-                    MAC3 = A3((((sd)TRZ << 12) + (R31 * v1) + (R32 * v2) + (R33 * v3)) >> 12);
+                    sd mac1 = ((sd)TRX << 12) + (R11 * v1) + (R12 * v2) + (R13 * v3);
+                    sd mac2 = ((sd)TRY << 12) + (R21 * v1) + (R22 * v2) + (R23 * v3);
+                    sd mac3 = ((sd)TRZ << 12) + (R31 * v1) + (R32 * v2) + (R33 * v3);
+
+                    MAC1 = A1(mac1 >> sh);
+                    MAC2 = A2(mac2 >> sh);
+                    MAC3 = A3(mac3 >> sh);
+
+                    IR1 = limB1(MAC1, lm);
+                    IR2 = limB2(MAC2, lm);
+                    (void)limB3((sw)(mac3 >> 12), 0);
+                    if (lm) {
+                        IR3 = MAC3 < 0 ? 0 : (MAC3 > 32767 ? 32767 : (sw)MAC3);
+                    }
+                    else {
+                        IR3 = MAC3 < -32768 ? -32768 : (MAC3 > 32767 ? 32767 : (sw)MAC3);
+                    }
                     
-                    MAC2IR(0);
-                    
-                    SZ(v) = limD(MAC3);
+                    SZ(v) = limD(mac3 >> 12);
                     quotient = limE(divide(H, SZ(v)));
                     
                     SX(v) = limG1(F((sd)OFX + ((sd)IR1 * quotient)) >> 16);

@@ -36,12 +36,24 @@ int main() {
     cop2.CTC2(26, 0x100);  // H
     cop2.MTC2( 0, pack(0x10, 0x20)); // VX0, VY0
     cop2.MTC2( 1, 0x100);            // VZ0
-    cop2.execute(0x01);
+    cop2.execute(0x01 | (1 << 19)); // RTPS sf=1
 
     check(cop2.MFC2(14) == pack(0x10, 0x20), "RTPS: SXY2 projected");
     check(cop2.MFC2(19) == 0x100,            "RTPS: SZ3 pushed");
     check(cop2.MFC2( 9) == 0x10,             "RTPS: IR1");
     check(gteFlag()     == 0,                "RTPS: no flags raised");
+
+    // --- RTPS sf=0: SZ3 still uses unshifted>>12, IR3 saturates ----------
+    cop2.reset();
+    cop2.CTC2( 0, 0x1000);
+    cop2.CTC2( 2, 0x1000);
+    cop2.CTC2( 4, 0x1000);
+    cop2.CTC2(26, 0x1000); // H
+    cop2.MTC2( 0, pack(0, 0));
+    cop2.MTC2( 1, 0x1000); // VZ0; mac3 = 0x1000*0x1000 = 0x1000000
+    cop2.execute(0x01);    // sf=0
+    check(cop2.MFC2(19) == 0x1000, "RTPS sf=0: SZ3 from mac3>>12");
+    check(cop2.MFC2(11) == 0x7fff, "RTPS sf=0: IR3 saturates unshifted MAC3");
 
     // --- RTPS: MAC1 positive overflow -> FLAG bits 30 + 31 -------------
     // TRX<<12 + R11*VX0 = 0x7fffffff000 + 0x3fff0001, >>12 exceeds 2^31-1
@@ -49,7 +61,7 @@ int main() {
     cop2.CTC2(5, 0x7fffffff); // TRX
     cop2.CTC2(0, 0x7fff);     // R11
     cop2.MTC2(0, pack(0x7fff, 0));
-    cop2.execute(0x01);
+    cop2.execute(0x01 | (1 << 19));
 
     check((gteFlag() & (1u << 30)) != 0, "RTPS: MAC1 positive overflow (bit 30)");
     check((gteFlag() & (1u << 31)) != 0, "RTPS: master error mirror (bit 31)");
@@ -59,7 +71,7 @@ int main() {
     cop2.CTC2(5, 0x80000000);       // TRX = -2^31
     cop2.CTC2(0, 0x7fff);           // R11
     cop2.MTC2(0, pack(-0x8000, 0)); // VX0 = -32768
-    cop2.execute(0x01);
+    cop2.execute(0x01 | (1 << 19));
 
     check((gteFlag() & (1u << 27)) != 0, "RTPS: MAC1 negative overflow (bit 27)");
 
@@ -184,7 +196,7 @@ int main() {
     cop2.CTC2(26, 0x200); // H
     cop2.MTC2(0, pack(0, 0));
     cop2.MTC2(1, 0x100);  // VZ0 -> SZ3 = 0x100; H >= SZ3*2
-    cop2.execute(0x01);
+    cop2.execute(0x01 | (1 << 19));
     check((gteFlag() & (1u << 17)) != 0, "UNR: divide overflow sets FLAG bit 17");
     check((gteFlag() & (1u << 31)) != 0, "UNR: divide overflow sets FLAG bit 31");
 
@@ -198,7 +210,7 @@ int main() {
     cop2.CTC2(26, 0xfe3f); // H
     cop2.MTC2(0, pack(0x10, 0x20));
     cop2.MTC2(1, 0x7f20);  // VZ0 -> SZ3
-    cop2.execute(0x01);
+    cop2.execute(0x01 | (1 << 19));
     check((gteFlag() & (1u << 17)) == 0, "UNR: FE3F/7F20 no divide-overflow flag");
     check(cop2.MFC2(19) == 0x7f20,       "UNR: FE3F/7F20 SZ3");
 
@@ -210,7 +222,7 @@ int main() {
     cop2.CTC2(26, 0); // H = 0
     cop2.MTC2(0, pack(0x10, 0x20));
     cop2.MTC2(1, 1);  // SZ3 = 1
-    cop2.execute(0x01);
+    cop2.execute(0x01 | (1 << 19));
     check(cop2.MFC2(14) == pack(0, 0), "UNR: 0/1 projects to origin");
     check((gteFlag() & (1u << 17)) == 0, "UNR: 0/1 no overflow flag");
 
