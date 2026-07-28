@@ -1,7 +1,7 @@
-// Boot menu for the Dreamcast port: lists the media found on the
-// romdisk / GD-ROM and lets the player pick with the controller.
+// Boot menu for the Dreamcast port: lists media found on the romdisk /
+// GD-ROM and lets the player pick with the controller.
 // Text is drawn with a GL texture atlas built from the Dreamcast's
-// BIOS font (bfont), so no font asset needs to ship with the binary.
+// BIOS font (bfont), so no font asset ships with the binary.
 
 #include "Global.h"
 
@@ -10,6 +10,7 @@
 #include "Menu.h"
 
 #include <dc/biosfont.h>
+#include <math.h>
 
 // bfont glyphs are 12x24, 1bpp, 3 bytes per 2 rows
 #define FONT_CW    12
@@ -18,17 +19,38 @@
 #define FONT_LAST  126
 #define FONT_COLS  16
 
-// PVR textures must be power-of-two
 #define ATLAS_W 256
 #define ATLAS_H 256
 
-#define MENU_VISIBLE  12
-#define MENU_TIMEOUT (10 * 60) // frames without a controller before auto-boot
+#define MENU_VISIBLE     9
+#define MENU_TIMEOUT     (10 * 60) // frames without a controller before auto-boot
+#define MENU_REPEAT_DELAY 18       // frames before key-repeat starts
+#define MENU_REPEAT_RATE  5        // frames between repeats
+#define MENU_CONFIRM_FRAMES 28     // brief confirm flash before leaving
+#define MENU_LABEL_MAX   36        // visible filename chars before ellipsis
+
+// Visual direction: deep ink + warm amber (not purple / cream / glow stacks)
+#define COL_INK_R     10
+#define COL_INK_G     16
+#define COL_INK_B     22
+#define COL_TEAL_R    18
+#define COL_TEAL_G    42
+#define COL_TEAL_B    48
+#define COL_BRAND_R   236
+#define COL_BRAND_G   232
+#define COL_BRAND_B   220
+#define COL_ACCENT_R  232
+#define COL_ACCENT_G  168
+#define COL_ACCENT_B  64
+#define COL_MUTED_R   120
+#define COL_MUTED_G   138
+#define COL_MUTED_B   142
+#define COL_ROW_R     188
+#define COL_ROW_G     196
+#define COL_ROW_B     192
 
 static GLuint fontTex = 0;
 
-// Unpack one 1bpp bfont glyph into the RGBA atlas at (cellX, cellY).
-// Every 3 bytes hold 2 rows of 12 bits, high bits first.
 static void unpackChar(const unsigned char *src, unsigned int *atlas, int cellX, int cellY) {
     for (int y = 0; y < FONT_CH; y += 2) {
         const unsigned char *b = src + (y >> 1) * 3;
@@ -72,12 +94,38 @@ static void menuInitFont(void) {
     delete[] atlas;
 }
 
-static void drawText(int x, int y, const char *s) {
+static void menuSetup2D(void) {
+    glViewport(0, 0, DC_SCREEN_W, DC_SCREEN_H);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0, DC_SCREEN_W, DC_SCREEN_H, 0, -1, 1);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+}
+
+static void drawFill(float x0, float y0, float x1, float y1,
+                     ub r, ub g, ub b, ub a) {
+    glColor4ub(r, g, b, a);
     glBegin(GL_QUADS);
-    for (; *s; s++, x += FONT_CW) {
+    glVertex2f(x0, y0);
+    glVertex2f(x1, y0);
+    glVertex2f(x1, y1);
+    glVertex2f(x0, y1);
+    glEnd();
+}
+
+static void drawTextScaled(float x, float y, float scale, const char *s) {
+    const float cw = FONT_CW * scale;
+    const float ch = FONT_CH * scale;
+
+    glBegin(GL_QUADS);
+    for (; *s; s++, x += cw) {
         unsigned char c = (unsigned char)*s;
-        if (c <= FONT_FIRST || c > FONT_LAST) {
-            continue; // space and anything unprintable advance silently
+        if (c < FONT_FIRST || c > FONT_LAST) {
+            continue;
+        }
+        if (c == ' ') {
+            continue;
         }
         int i = c - FONT_FIRST;
         float u0 = ((i % FONT_COLS) * FONT_CW) / (float)ATLAS_W;
@@ -85,12 +133,43 @@ static void drawText(int x, int y, const char *s) {
         float u1 = u0 + FONT_CW / (float)ATLAS_W;
         float v1 = v0 + FONT_CH / (float)ATLAS_H;
 
-        glTexCoord2f(u0, v0); glVertex2f((float)x,           (float)y);
-        glTexCoord2f(u1, v0); glVertex2f((float)(x + FONT_CW), (float)y);
-        glTexCoord2f(u1, v1); glVertex2f((float)(x + FONT_CW), (float)(y + FONT_CH));
-        glTexCoord2f(u0, v1); glVertex2f((float)x,           (float)(y + FONT_CH));
+        glTexCoord2f(u0, v0); glVertex2f(x,      y);
+        glTexCoord2f(u1, v0); glVertex2f(x + cw, y);
+        glTexCoord2f(u1, v1); glVertex2f(x + cw, y + ch);
+        glTexCoord2f(u0, v1); glVertex2f(x,      y + ch);
     }
     glEnd();
+}
+
+static void drawText(int x, int y, const char *s) {
+    drawTextScaled((float)x, (float)y, 1.0f, s);
+}
+
+static int textWidth(const char *s, float scale) {
+    int n = 0;
+    for (; *s; s++) {
+        n++;
+    }
+    return (int)(n * FONT_CW * scale);
+}
+
+static void truncateLabel(char *dst, size_t dstSize, const char *src, int maxChars) {
+    if (maxChars < 4) {
+        maxChars = 4;
+    }
+    size_t len = strlen(src);
+    if (len <= (size_t)maxChars) {
+        snprintf(dst, dstSize, "%s", src);
+        return;
+    }
+    // Keep head, ellipsis, short tail so disc revisions stay recognizable
+    int head = maxChars - 4;
+    int tail = 3;
+    if (head < 1) {
+        head = 1;
+        tail = maxChars - 2;
+    }
+    snprintf(dst, dstSize, "%.*s...%s", head, src, src + len - tail);
 }
 
 static const char *baseName(const char *path) {
@@ -98,8 +177,6 @@ static const char *baseName(const char *path) {
     return slash ? slash + 1 : path;
 }
 
-// Current buttons, with the analog stick folded into the D-pad.
-// Returns (uw)-1 when no controller is attached.
 static uw menuButtons(void) {
     maple_device_t *dev = maple_enum_type(0, MAPLE_FUNC_CONTROLLER);
     if (!dev) {
@@ -112,32 +189,168 @@ static uw menuButtons(void) {
     }
 
     uw b = (uw)(state->buttons & 0xffff);
+    if (state->joyx < -DC_STICK_THRESHOLD) b |= CONT_DPAD_LEFT;
+    if (state->joyx >  DC_STICK_THRESHOLD) b |= CONT_DPAD_RIGHT;
     if (state->joyy < -DC_STICK_THRESHOLD) b |= CONT_DPAD_UP;
     if (state->joyy >  DC_STICK_THRESHOLD) b |= CONT_DPAD_DOWN;
     return b;
 }
 
-int menuPickGame(const MediaEntry *items, int count) {
+static const char *mediaKindLabel(MediaKind kind) {
+    switch (kind) {
+        case MEDIA_EXE:  return "EXE ";
+        case MEDIA_DISC: return "DISC";
+        case MEDIA_BIOS: return "BIOS";
+        default:         return "----";
+    }
+}
+
+static void drawBackdrop(int frame) {
+    const float breathe = 0.5f + 0.5f * sinf(frame * 0.012f);
+    const int tealLift = (int)(6.0f * breathe);
+
+    glDisable(GL_TEXTURE_2D);
+    const int bands = 16;
+    for (int i = 0; i < bands; i++) {
+        float t = i / (float)(bands - 1);
+        ub r = (ub)(COL_INK_R + (COL_TEAL_R + tealLift - COL_INK_R) * t);
+        ub g = (ub)(COL_INK_G + (COL_TEAL_G + tealLift - COL_INK_G) * t);
+        ub b = (ub)(COL_INK_B + (COL_TEAL_B - COL_INK_B) * t);
+        float y0 = (DC_SCREEN_H * i) / (float)bands;
+        float y1 = (DC_SCREEN_H * (i + 1)) / (float)bands;
+        drawFill(0, y0, DC_SCREEN_W, y1, r, g, b, 255);
+    }
+
+    // Slow diagonal wash — one atmospheric plane, not a collage
+    {
+        float shift = fmodf(frame * 0.35f, (float)DC_SCREEN_W);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glColor4ub(COL_TEAL_R + 8, COL_TEAL_G + 10, COL_TEAL_B + 6, 28);
+        glBegin(GL_QUADS);
+        glVertex2f(-80 + shift, 0);
+        glVertex2f(40 + shift, 0);
+        glVertex2f(DC_SCREEN_W + 80 + shift, DC_SCREEN_H);
+        glVertex2f(DC_SCREEN_W - 40 + shift, DC_SCREEN_H);
+        glEnd();
+    }
+
+    drawFill(0, 0, DC_SCREEN_W, 118, COL_INK_R, COL_INK_G, COL_INK_B, 180);
+    drawFill(40, 108, 200, 110, COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, 255);
+}
+
+static void drawBrand(int frame, ub alpha) {
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, fontTex);
+    glColor4ub(COL_BRAND_R, COL_BRAND_G, COL_BRAND_B, alpha);
+    drawTextScaled(40, 28, 2.0f, "PSeudo");
+    (void)frame;
+}
+
+// Edge-triggered + hold-repeat for D-pad axes. `held` is the current mask
+// for the axis group; returns the bits that should fire this frame.
+static uw navRepeat(uw held, uw *prevHeld, int *timer) {
+    const uw axes = CONT_DPAD_UP | CONT_DPAD_DOWN | CONT_DPAD_LEFT | CONT_DPAD_RIGHT;
+    uw cur = held & axes;
+    uw pressed = cur & ~(*prevHeld);
+
+    if (cur == 0) {
+        *timer = 0;
+        *prevHeld = cur;
+        return 0;
+    }
+
+    if (pressed) {
+        *timer = MENU_REPEAT_DELAY;
+        *prevHeld = cur;
+        return pressed;
+    }
+
+    if (*timer > 0) {
+        (*timer)--;
+        *prevHeld = cur;
+        return 0;
+    }
+
+    *timer = MENU_REPEAT_RATE;
+    *prevHeld = cur;
+    return cur; // repeat the held direction(s)
+}
+
+void menuFatal(const char *title, const char *line1, const char *line2) {
     menuInitFont();
+    menuSetup2D();
 
-    const int total = count + 1; // + trailing "Start BIOS" entry
-    int sel = 0;
-    int idleFrames = 0;
-    uw prev = (uw)-1; // Swallow buttons already held on entry
-
-    glViewport(0, 0, DC_SCREEN_W, DC_SCREEN_H);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glOrtho(0, DC_SCREEN_W, DC_SCREEN_H, 0, -1, 1);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    int frame = 0;
+    uw prev = (uw)-1;
+    const int timeout = 12 * 60;
 
     for (;;) {
-        // --- Input -----------------------------------------------------
+        frame++;
         uw cur = menuButtons();
         if (cur == (uw)-1) {
-            // No controller: boot the first entry after a grace period
-            if (++idleFrames > MENU_TIMEOUT) {
+            cur = 0;
+            if (frame > timeout) {
+                return;
+            }
+        }
+
+        uw pressed = prev == (uw)-1 ? 0 : (cur & ~prev);
+        prev = cur;
+        if (pressed & (CONT_A | CONT_START | CONT_B)) {
+            return;
+        }
+
+        glClearColor(COL_INK_R / 255.0f, COL_INK_G / 255.0f, COL_INK_B / 255.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        drawBackdrop(frame);
+
+        ub a = frame < 30 ? (ub)((frame * 255) / 30) : 255;
+        drawBrand(frame, a);
+
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, fontTex);
+        glColor4ub(COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, a);
+        drawText(40, 140, title);
+        glColor4ub(COL_ROW_R, COL_ROW_G, COL_ROW_B, a);
+        if (line1) drawText(40, 190, line1);
+        if (line2) drawText(40, 222, line2);
+
+        glColor4ub(COL_MUTED_R, COL_MUTED_G, COL_MUTED_B, a);
+        drawText(40, 444, "A / Start continue");
+
+        glDisable(GL_TEXTURE_2D);
+        glDisable(GL_BLEND);
+        glKosSwapBuffers();
+    }
+}
+
+int menuPickGame(const MediaEntry *items, int count) {
+    menuInitFont();
+    menuSetup2D();
+
+    const int total = count + 1; // trailing "Start BIOS"
+    int sel = 0;
+    int idleFrames = 0;
+    int frame = 0;
+    int confirmLeft = 0;
+    int result = -2; // pending until confirm flash finishes
+    int repeatTimer = 0;
+    uw prev = (uw)-1;
+    uw prevNav = 0;
+    float scroll = 0.0f; // smooth window start
+
+    for (;;) {
+        frame++;
+
+        // --- Input -----------------------------------------------------
+        uw cur = menuButtons();
+        bool noPad = (cur == (uw)-1);
+        if (noPad) {
+            if (confirmLeft <= 0 && ++idleFrames > MENU_TIMEOUT) {
                 return count ? 0 : -1;
             }
             cur = prev == (uw)-1 ? 0 : prev;
@@ -149,50 +362,160 @@ int menuPickGame(const MediaEntry *items, int count) {
         uw pressed = prev == (uw)-1 ? 0 : (cur & ~prev);
         prev = cur;
 
-        if (pressed & CONT_DPAD_UP)   sel = (sel + total - 1) % total;
-        if (pressed & CONT_DPAD_DOWN) sel = (sel + 1) % total;
-        if (pressed & (CONT_A | CONT_START)) {
-            return sel < count ? sel : -1;
+        if (confirmLeft <= 0) {
+            uw nav = navRepeat(cur, &prevNav, &repeatTimer);
+            if (nav & CONT_DPAD_UP)   sel = (sel + total - 1) % total;
+            if (nav & CONT_DPAD_DOWN) sel = (sel + 1) % total;
+            if (nav & CONT_DPAD_LEFT)  sel = (sel + total - MENU_VISIBLE) % total;
+            if (nav & CONT_DPAD_RIGHT) sel = (sel + MENU_VISIBLE) % total;
+
+            if (pressed & (CONT_A | CONT_START)) {
+                result = sel < count ? sel : -1;
+                confirmLeft = MENU_CONFIRM_FRAMES;
+            }
+            if (pressed & CONT_B) {
+                result = -1;
+                confirmLeft = MENU_CONFIRM_FRAMES;
+            }
         }
-        if (pressed & CONT_B) {
-            return -1;
+        else if (--confirmLeft <= 0) {
+            return result;
         }
+
+        // Smooth scroll toward a window that keeps `sel` centered
+        float target = (float)(sel - MENU_VISIBLE / 2);
+        if (target > total - MENU_VISIBLE) target = (float)(total - MENU_VISIBLE);
+        if (target < 0) target = 0;
+        scroll += (target - scroll) * 0.22f;
 
         // --- Render ----------------------------------------------------
-        glClearColor(0.04f, 0.04f, 0.1f, 1.0f);
+        glClearColor(COL_INK_R / 255.0f, COL_INK_G / 255.0f, COL_INK_B / 255.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        glEnable(GL_TEXTURE_2D);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        drawBackdrop(frame);
+
+        ub brandA = 255;
+        if (frame < 40) {
+            brandA = (ub)((frame * 255) / 40);
+        }
+        drawBrand(frame, brandA);
+
+        glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, fontTex);
+        glColor4ub(COL_MUTED_R, COL_MUTED_G, COL_MUTED_B, brandA);
+        drawText(40, 82, "Choose something to boot");
 
-        glColor4ub(255, 255, 255, 255);
-        drawText(40, 32, "PSeudo - Select media");
+        const float pulse = 0.55f + 0.45f * sinf(frame * 0.09f);
+        const int railA = (int)(140 + 100 * pulse);
+        const int listTop = 128;
+        const int rowPitch = FONT_CH + 10;
 
-        // Keep the selection inside the visible window
-        int first = sel - MENU_VISIBLE / 2;
-        if (first > total - MENU_VISIBLE) first = total - MENU_VISIBLE;
-        if (first < 0) first = 0;
-
-        for (int row = 0; row < MENU_VISIBLE && first + row < total; row++) {
-            int i = first + row;
-            int y = 88 + row * (FONT_CH + 4);
-
-            const char *label = i < count ? baseName(items[i].path) : "Start BIOS";
-
-            if (i == sel) {
-                glColor4ub(255, 220, 80, 255);
-                drawText(40, y, ">");
-            }
-            else {
-                glColor4ub(170, 170, 170, 255);
-            }
-            drawText(64, y, label);
+        // Scroll affordances
+        glDisable(GL_TEXTURE_2D);
+        if (scroll > 0.4f) {
+            drawFill(310, listTop - 14, 330, listTop - 10,
+                     COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, (ub)(120 + 80 * pulse));
+        }
+        if (scroll + MENU_VISIBLE < total - 0.4f) {
+            float y = listTop + MENU_VISIBLE * rowPitch + 4;
+            drawFill(310, y, 330, y + 4,
+                     COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, (ub)(120 + 80 * pulse));
         }
 
-        glColor4ub(120, 120, 140, 255);
-        drawText(40, 440, "DPAD move  A/START boot  B BIOS");
+        int first = (int)(scroll + 0.001f);
+        float yBias = (scroll - first) * rowPitch;
+
+        for (int row = 0; row <= MENU_VISIBLE && first + row < total; row++) {
+            int i = first + row;
+            float y = listTop + row * rowPitch - yBias;
+
+            if (y < listTop - rowPitch || y > listTop + MENU_VISIBLE * rowPitch) {
+                continue;
+            }
+
+            char kind[8];
+            char label[MEDIA_PATH_MAX];
+            if (i < count) {
+                snprintf(kind, sizeof(kind), "%s", mediaKindLabel(items[i].kind));
+                truncateLabel(label, sizeof(label), baseName(items[i].path), MENU_LABEL_MAX);
+            }
+            else {
+                snprintf(kind, sizeof(kind), "BIOS");
+                snprintf(label, sizeof(label), "Start BIOS shell");
+            }
+
+            const bool on = (i == sel);
+            const bool confirming = on && confirmLeft > 0;
+            float xOff = on ? (3.0f + 2.0f * sinf(frame * 0.11f)) : 0.0f;
+
+            glDisable(GL_TEXTURE_2D);
+            if (on) {
+                ub wash = confirming ? (ub)(90 + 80 * pulse) : 70;
+                drawFill(40, y, 44, y + FONT_CH,
+                         COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, (ub)railA);
+                drawFill(48, y - 2, DC_SCREEN_W - 40, y + FONT_CH + 2,
+                         confirming ? COL_ACCENT_R : COL_TEAL_R,
+                         confirming ? COL_ACCENT_G : COL_TEAL_G,
+                         confirming ? (ub)(COL_ACCENT_B / 2) : COL_TEAL_B,
+                         wash);
+            }
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, fontTex);
+
+            if (on) {
+                glColor4ub(COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, 255);
+            }
+            else {
+                glColor4ub(COL_MUTED_R, COL_MUTED_G, COL_MUTED_B, 220);
+            }
+            drawTextScaled(56 + xOff, y, 1.0f, kind);
+
+            if (on) {
+                glColor4ub(COL_BRAND_R, COL_BRAND_G, COL_BRAND_B, 255);
+            }
+            else {
+                glColor4ub(COL_ROW_R, COL_ROW_G, COL_ROW_B, 255);
+            }
+            drawTextScaled(120 + xOff, y, 1.0f, label);
+        }
+
+        // Confirm caption
+        if (confirmLeft > 0) {
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, fontTex);
+            glColor4ub(COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, 255);
+            const char *msg = (result < 0) ? "Opening BIOS..." : "Booting...";
+            int w = textWidth(msg, 1.0f);
+            drawText((DC_SCREEN_W - w) / 2, 400, msg);
+        }
+
+        // Footer
+        glDisable(GL_TEXTURE_2D);
+        drawFill(0, 430, DC_SCREEN_W, DC_SCREEN_H, COL_INK_R, COL_INK_G, COL_INK_B, 210);
+
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, fontTex);
+        glColor4ub(COL_MUTED_R, COL_MUTED_G, COL_MUTED_B, 255);
+
+        if (noPad && confirmLeft <= 0) {
+            char wait[64];
+            int left = (MENU_TIMEOUT - idleFrames + 59) / 60;
+            if (left < 0) left = 0;
+            snprintf(wait, sizeof(wait), "No controller — booting in %ds", left);
+            drawText(40, 444, wait);
+
+            glDisable(GL_TEXTURE_2D);
+            float progress = idleFrames / (float)MENU_TIMEOUT;
+            if (progress > 1.0f) progress = 1.0f;
+            drawFill(40, 472, 40 + progress * (DC_SCREEN_W - 80), 476,
+                     COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, 220);
+        }
+        else if (confirmLeft <= 0) {
+            drawText(40, 444, "Hold D-pad to scroll   A / Start boot   B BIOS");
+        }
 
         glDisable(GL_TEXTURE_2D);
         glDisable(GL_BLEND);

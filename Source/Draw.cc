@@ -46,12 +46,36 @@ void CstrDraw::reset() {
     res      = { 0 };
     offset   = { 0 };
     drawArea = { 0, 0, FRAME_W - 1, FRAME_H - 1 };
+    setTexWindow(0);
 
     opaqueClipState(true);
     
     // Redraw
     resize(window.h, window.v);
     swapBuffers();
+}
+
+void CstrDraw::setTexWindow(uw data) {
+    texWindow.maskX   = (data >>  0) & 0x1f;
+    texWindow.maskY   = (data >>  5) & 0x1f;
+    texWindow.offsetX = (data >> 10) & 0x1f;
+    texWindow.offsetY = (data >> 15) & 0x1f;
+    texWindow.raw     = data & 0xfffff;
+    vs.info[vs.GPU_INFO_TEX_WINDOW] = texWindow.raw;
+    tcache.invalidate(0, 0, FRAME_W, FRAME_H);
+}
+
+ub CstrDraw::mapTexU(ub u) const {
+    // Texcoord = (Texcoord AND NOT(Mask*8)) OR ((Offset AND Mask)*8)
+    const ub mask = (ub)(texWindow.maskX << 3);
+    const ub off  = (ub)((texWindow.offsetX & texWindow.maskX) << 3);
+    return (ub)((u & (ub)~mask) | off);
+}
+
+ub CstrDraw::mapTexV(ub v) const {
+    const ub mask = (ub)(texWindow.maskY << 3);
+    const ub off  = (ub)((texWindow.offsetY & texWindow.maskY) << 3);
+    return (ub)((v & (ub)~mask) | off);
 }
 
 void CstrDraw::swapBuffers() {
@@ -172,6 +196,7 @@ void CstrDraw::updateTextureState(uw data) {
     texState.color = (data >> 7) & 3;
     texState.abr   = (data >> 5) & 3;
     
+    vs.setDrawMode(data);
     GLBlendFunc(bit[texState.abr].src, bit[texState.abr].dst);
 }
 
@@ -220,13 +245,12 @@ void CstrDraw::primitive(uw addr, uw *packets) {
     switch((addr >> 5) & 7) {
         case GPU_TYPE_CMD:
             switch(addr) {
-                case 0x01: // Reset
-                    vs.write(0x1f801814, 0x01000000);
+                case 0x01: // Clear Cache
+                    tcache.invalidate(0, 0, FRAME_W, FRAME_H);
                     return;
                     
-                case 0x02: // Rect
+                case 0x02: // Fill Rectangle in VRAM
                     {
-                        // Basic packet components
                         Color  *hue[1];
                         Coords *vx [1];
                         Coords *sz [1];
@@ -234,17 +258,20 @@ void CstrDraw::primitive(uw addr, uw *packets) {
                         parse(hue, &packets[0], 1, 0);
                         parse( vx, &packets[1], 1, 0);
                         parse( sz, &packets[2], 1, 0);
+
+                        vs.photoFill(packets);
                         
                         opaqueClipState(false);
                         GLColor4ub(hue[0]->r, hue[0]->c, hue[0]->b, COLOR_MAX);
                         
 #if defined(APPLE_MACOS) || defined(_WIN32) || defined(DREAMCAST)
-                        GLRecti(NORMALIZE_PT(vx[0]->w),
-                                NORMALIZE_PT(vx[0]->h),
-                                NORMALIZE_PT(vx[0]->w) + sz[0]->w,
-                                NORMALIZE_PT(vx[0]->h) + sz[0]->h);
-#elif APPLE_IOS
-                        // TODO
+                        const sh fx = (sh)(vx[0]->w & 0x3f0);
+                        const sh fy = (sh)(vx[0]->h & 0x1ff);
+                        const sh fw = (sh)(((sz[0]->w & 0x3ff) + 0x0f) & ~0x0f);
+                        const sh fh = (sh)(sz[0]->h & 0x1ff);
+                        if (fw && fh) {
+                            GLRecti(fx, fy, fx + fw, fy + fh);
+                        }
 #endif
                         opaqueClipState(true);
                     }
@@ -388,15 +415,11 @@ void CstrDraw::primitive(uw addr, uw *packets) {
                     pos.txw = size;
                     pos.txh = size;
                 }
-                else { // Freeform & Texture Window
+                else { // Freeform size
                     pos.vxw = sz[0]->w;
                     pos.vxh = sz[0]->h;
-                    
-                    //tex[0]->u += texWindow.startX;
-                    //tex[0]->v += texWindow.startY;
-                    
-                    pos.txw = pos.vxw;//MIN(texWindow.endX, pos.vxw);
-                    pos.txh = pos.vxh;//MIN(texWindow.endY, pos.vxh);
+                    pos.txw = pos.vxw;
+                    pos.txh = pos.vxh;
                 }
                 
                 if (setup->textured) {
@@ -454,11 +477,7 @@ void CstrDraw::primitive(uw addr, uw *packets) {
                     return;
                     
                 case 0xe2: // Texture Window
-                    texWindow.startX = ((packets[0] >> 10) & 0x1f) << 3;
-                    texWindow.startY = ((packets[0] >> 15) & 0x1f) << 3;
-                    texWindow.  endX = 256 - (((packets[0] >> 0) & 0x1f) << 3);
-                    texWindow.  endY = 256 - (((packets[0] >> 5) & 0x1f) << 3);
-                    vs.info[vs.GPU_INFO_TEX_WINDOW] = packets[0] & 0xfffff;
+                    setTexWindow(packets[0]);
                     return;
                     
                 case 0xe3: // Draw Area Start
@@ -477,8 +496,8 @@ void CstrDraw::primitive(uw addr, uw *packets) {
                     vs.info[vs.GPU_INFO_DRAW_OFFSET] = packets[0] & 0x7fffff;
                     return;
                     
-                case 0xe6: // TODO: STP
-                    //printf("/// PSeudo GPU STP: 0x%x\n", packets[0]);
+                case 0xe6: // STP (mask bit settings)
+                    vs.setMask(packets[0]);
                     return;
             }
             

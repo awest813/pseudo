@@ -29,8 +29,14 @@ class CstrSerial {
         SIO_CTRL_RESET       = 0x040,
     };
     
+    enum {
+        SIO_DEV_NONE,
+        SIO_DEV_PAD,
+        SIO_DEV_MEMCARD,
+    };
+
     uh btnState;
-    ub bfr[5], index, step;
+    ub bfr[5], index, step, device;
     
 public:
     void reset();

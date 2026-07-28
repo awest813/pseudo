@@ -113,6 +113,9 @@ static MediaKind classify(const char *path) {
     long size = ftell(fp);
     fclose(fp);
 
+    if (got >= 4 && !memcmp(magic, "ECM\0", 4)) {
+        return MEDIA_ECM;
+    }
     if (got == sizeof(magic) && !memcmp(magic, "PS-X EXE", 8)) {
         return MEDIA_EXE;
     }
@@ -120,6 +123,9 @@ static MediaKind classify(const char *path) {
         return MEDIA_BIOS;
     }
     if (size >= MEDIA_MIN_SECTORS * 2352 && size % 2352 == 0) {
+        return MEDIA_DISC;
+    }
+    if (size >= MEDIA_MIN_SECTORS * 2048 && size % 2048 == 0) {
         return MEDIA_DISC;
     }
     return MEDIA_NONE;
@@ -214,6 +220,10 @@ static int scanMedia(const char *dir, char *bios, MediaEntry *games, int count) 
                 }
                 break;
 
+            case MEDIA_ECM:
+                printf("PSeudo: Skipping ECM image (decompress to .bin/.img first): %s\n", path);
+                break;
+
             default:
                 break;
         }
@@ -248,16 +258,17 @@ int main(int argc, char **argv) {
     gameCount = scanMedia("/cd", biosPath, games, gameCount);
 
     if (!biosPath[0]) {
+        menuFatal("BIOS not found",
+                  "Place a 512KB dump on /rd or /cd",
+                  "Example: SCPH1001.BIN");
         printf("PSeudo: BIOS not found. Place a 512KB BIOS dump (e.g. SCPH1001.BIN)\n");
         printf("        on the romdisk or GD-ROM.\n");
         return 1;
     }
 
-    // One choice boots straight away; several bring up the picker
-    int pick = gameCount == 1 ? 0 : -1;
-    if (gameCount > 1) {
-        pick = menuPickGame(games, gameCount);
-    }
+    // Always offer the picker so a single game can still yield to the BIOS
+    // shell, and so zero-game boots still confirm "Start BIOS".
+    int pick = menuPickGame(games, gameCount);
 
     printf("Loading BIOS: %s\n", biosPath);
     psx.init(biosPath);

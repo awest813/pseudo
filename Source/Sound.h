@@ -4,7 +4,15 @@ class CstrAudio {
         SPU_SAMPLE_SIZE    = 1024,
         SPU_SAMPLE_COUNT   = SPU_SAMPLE_SIZE / 4,
         SPU_MAX_CHAN       = 24 + 1,
+#ifdef DREAMCAST
+        // Fewer queued buffers on DC: each holds 1 KB of stereo samples
+        SPU_ALC_BUF_AMOUNT = 8
+#else
         SPU_ALC_BUF_AMOUNT = 16
+#endif
+        ,
+        XA_SAMPLE_RATE     = 37800,
+        XA_BUF_SAMPLES = 32768
     };
     
     const int f[5][2] = {
@@ -14,6 +22,7 @@ class CstrAudio {
     uh spuMem[256 * 1024];
     uh sbuf[SPU_SAMPLE_SIZE];
     uw spuAddr;
+    uw endx; // Voice end flags (SPU ENDX 1d9c/1d9e)
     
     // OpenAL
     ALCdevice *device;
@@ -31,10 +40,19 @@ class CstrAudio {
         sw paddr; // Current
         sw raddr; // Return
     } spuVoices[SPU_MAX_CHAN];
-    
+
+    sh xaL[XA_BUF_SAMPLES];
+    sh xaR[XA_BUF_SAMPLES];
+    int xaRead, xaWrite, xaCount;
+    int xaFrac;
+    XADecodeState xaState;
+    sh cdVolL, cdVolR;
+
     sh setVolume(sh);
     void voiceOn(uw);
+    void voiceOff(uw);
     void freeBuffers();
+    void mixXA(int samples);
     
 public:
     CstrAudio() {
@@ -60,6 +78,9 @@ public:
     
     void reset();
     void decodeStream();
+    void decodeXA(const ub *sector, ub file, ub channel);
+    // Mix one SPU_SAMPLE_COUNT stereo frame into sbuf (also used by tests)
+    void step();
     void write(uw, uh);
     uh read(uw);
     void executeDMA(CstrBus::castDMA *);

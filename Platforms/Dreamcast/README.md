@@ -28,17 +28,20 @@ PSeudo detects media by content, not by file name, scanning the romdisk
 | Media    | Detection                                              |
 |----------|--------------------------------------------------------|
 | PS1 BIOS | any 512KB dump, e.g. `SCPH1001.BIN` (not distributed)  |
-| Game     | raw disc image (2352 bytes/sector), or a `.cue` naming one |
+| Game     | raw disc image (2352 or 2048 bytes/sector), or a `.cue` naming one |
+|          | ECM images are detected but not supported — decompress first |
 | Homebrew | a PS-X EXE file                                        |
 
 Files placed in `romdisk/` are baked into the binary at `/rd`. The
 romdisk is loaded into RAM whole, so prefer the GD-ROM for full-size
 game images.
 
-With a single game found it boots straight away. With several, a boot
-menu lists them (plus a *Start BIOS* entry): D-pad or analog stick to
-move, **A**/**Start** to boot, **B** for the BIOS shell. Without a
-controller the first entry boots after ten seconds.
+With a BIOS present the boot menu always appears, even for a single
+game (so you can still open the BIOS shell). D-pad or analog stick to
+move (hold to scroll), **A**/**Start** to boot, **B** for the BIOS
+shell. Without a controller the first entry boots after a short
+countdown. A missing BIOS shows an on-screen notice instead of only
+logging to the serial console.
 
 ## Controls
 
@@ -55,3 +58,10 @@ controller the first entry boots after ten seconds.
 | Start                  | Start       |
 | L + R triggers + Start | Select      |
 | A + B + X + Y + Start  | quit        |
+
+## Saves
+
+PlayStation memory card data is stored in `/pc/memcard1.mcr` on hardware
+when a `/pc` filesystem is available (e.g. SD adapter or dcload host
+folder). Without `/pc`, the card starts empty each run until a writable
+path is configured.

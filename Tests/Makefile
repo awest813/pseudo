@@ -7,14 +7,15 @@
 SOURCE_DIR := ../Source
 DC_DIR     := ../Platforms/Dreamcast
 
-CORE_SRCS := Bus CD Counters Disc Draw GTE Graphics Hardware MDEC Mem \
-             PSeudo R3000A SIO Sound TextureCache
+CORE_SRCS := Bus CD Counters Disc Draw GTE Graphics Hardware MDEC Mem Memcard \
+             PSeudo R3000A SIO Sound TextureCache XA
 
 CXX      ?= g++
 CXXFLAGS += -std=gnu++17 -Wall -O2 -DDREAMCAST -D__KOS__ \
             -I$(DC_DIR)/HostCheck -I$(SOURCE_DIR) -Wno-changes-meaning
 
-TESTS := gte-test cpu-test
+TESTS := gte-test cpu-test disc-test gpu-test memcard-test xa-test mdec-test \
+         texwindow-test counters-test spu-test cd-test
 
 all: $(TESTS)
 
@@ -26,9 +27,54 @@ cpu-test: CPU.cc $(DC_DIR)/HostCheck/Stubs.cc \
           $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
+disc-test: Disc.cc $(DC_DIR)/HostCheck/Stubs.cc \
+           $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+gpu-test: GPU.cc $(DC_DIR)/HostCheck/Stubs.cc \
+          $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+memcard-test: Memcard.cc $(DC_DIR)/HostCheck/Stubs.cc \
+            $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+xa-test: XA.cc $(DC_DIR)/HostCheck/Stubs.cc \
+         $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+mdec-test: MDEC.cc $(DC_DIR)/HostCheck/Stubs.cc \
+           $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+texwindow-test: TexWindow.cc $(DC_DIR)/HostCheck/Stubs.cc \
+                $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+counters-test: Counters.cc $(DC_DIR)/HostCheck/Stubs.cc \
+               $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+spu-test: SPU.cc $(DC_DIR)/HostCheck/Stubs.cc \
+          $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+cd-test: CD.cc $(DC_DIR)/HostCheck/Stubs.cc \
+         $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
 run: $(TESTS)
 	./gte-test
 	./cpu-test
+	./disc-test
+	./gpu-test
+	./memcard-test
+	./xa-test
+	./mdec-test
+	./texwindow-test
+	./counters-test
+	./spu-test
+	./cd-test
 
 clean:
 	-rm -f $(TESTS)

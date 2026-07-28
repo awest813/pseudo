@@ -5,11 +5,13 @@ on:
     paths:
       - 'Source/**'
       - 'Platforms/Dreamcast/**'
+      - 'Tests/**'
       - '.github/workflows/dreamcast.yml'
   pull_request:
     paths:
       - 'Source/**'
       - 'Platforms/Dreamcast/**'
+      - 'Tests/**'
       - '.github/workflows/dreamcast.yml'
 
 jobs:

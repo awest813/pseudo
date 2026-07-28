@@ -11,8 +11,9 @@ enum MediaKind {
     MEDIA_NONE,
     MEDIA_BIOS, // 512KB raw BIOS dump
     MEDIA_EXE,  // "PS-X EXE" header
-    MEDIA_DISC, // raw disc image, 2352 bytes per sector
+    MEDIA_DISC, // raw disc image, 2352 or 2048 bytes per sector
     MEDIA_CUE,  // cue sheet naming a disc image
+    MEDIA_ECM,  // Error Code Modeler compressed image (unsupported)
 };
 
 struct MediaEntry {
@@ -25,6 +26,10 @@ struct MediaEntry {
 // the chosen entry, or -1 for the BIOS shell. With no controller
 // plugged in, the first entry is chosen after a ~10 second timeout.
 int menuPickGame(const MediaEntry *items, int count);
+
+// Full-screen fatal notice in the same visual language as the picker.
+// Blocks until Start/A or a short timeout, then returns.
+void menuFatal(const char *title, const char *line1, const char *line2);
 #endif
 
 #endif

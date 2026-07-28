@@ -18,7 +18,10 @@ void CstrGraphics::reset() {
     vrop = { 0 };
     
     memset(info, 0, sizeof(info));
+    info[0] = 2; // GPU type (CXD8561Q / CXD8538BQ)
+    info[1] = 1;
     info[GPU_INFO_VERSION] = 0x2;
+    info[6] = 1;
     
     ret.data   = 0x400;
     clock      = 0;
@@ -55,6 +58,38 @@ void CstrGraphics::update(uw frames) {
     }
 }
 
+void CstrGraphics::setMask(uw data) {
+    ret.status &= ~(GPU_STAT_MASKDRAWN | GPU_STAT_MASKENABLED | GPU_STAT_DRAWINGALLOWED);
+    if (data & 1) {
+        ret.status |= GPU_STAT_MASKDRAWN;
+    }
+    if (data & 2) {
+        ret.status |= GPU_STAT_MASKENABLED;
+    }
+    if (!(data & 4)) {
+        ret.status |= GPU_STAT_DRAWINGALLOWED;
+    }
+}
+
+void CstrGraphics::setDrawMode(uw data) {
+    // GPUSTAT bits 0-10 mirror GP0(E1h) texture-page / dither / draw-to-display
+    ret.status = (ret.status & ~0x7ff) | (data & 0x7ff);
+}
+
+void CstrGraphics::writeVramPixel(uw index, uh pixel) {
+    if (ret.status & GPU_STAT_MASKENABLED) {
+        if (vram.ptr[index] & 0x8000) {
+            return;
+        }
+    }
+
+    if (ret.status & GPU_STAT_MASKDRAWN) {
+        pixel |= 0x8000;
+    }
+
+    vram.ptr[index] = pixel;
+}
+
 void CstrGraphics::write(uw addr, uw data) {
     switch(addr & 0xf) {
         case 0: // Data
@@ -78,10 +113,17 @@ void CstrGraphics::write(uw addr, uw data) {
                     
                 case 0x03:
                     isDisabled = data & 1;
+                    if (isDisabled) {
+                        ret.status |= GPU_STAT_DISPLAYDISABLED;
+                    }
+                    else {
+                        ret.status &= ~GPU_STAT_DISPLAYDISABLED;
+                    }
                     return;
                     
                 case 0x04:
                     modeDMA = data & 3;
+                    ret.status = (ret.status & ~GPU_STAT_DMABITS) | ((modeDMA & 3) << 29);
                     return;
                     
                 case 0x05:
@@ -111,6 +153,16 @@ void CstrGraphics::write(uw addr, uw data) {
                         isVideo24Bit = data & 0x10;
                         isVideoPAL   = data & 0x08;
                         
+                        // Mirror display-mode fields into GPUSTAT
+                        ret.status &= ~(GPU_STAT_WIDTHBITS | GPU_STAT_DOUBLEHEIGHT |
+                                        GPU_STAT_PAL | GPU_STAT_RGB24 | GPU_STAT_INTERLACED);
+                        ret.status |= ((data & 0x3) << 16);                 // Hres bits 16-17
+                        if (data & 0x40) ret.status |= (1 << 18);           // Hres2 → width bit2
+                        if (data & 0x04) ret.status |= GPU_STAT_DOUBLEHEIGHT;
+                        if (isVideoPAL)   ret.status |= GPU_STAT_PAL;
+                        if (isVideo24Bit) ret.status |= GPU_STAT_RGB24;
+                        if (isInterlaced) ret.status |= GPU_STAT_INTERLACED;
+
                         // Basic info
                         const uh w = resMode[(data & 3) | ((data & 0x40) >> 4)];
                         const uh h = (data & 4) ? 480 : 240;
@@ -127,16 +179,13 @@ void CstrGraphics::write(uw addr, uw data) {
                     }
                     return;
                     
-                case 0x10: // TODO: Information
+                case 0x10: // GPU information queries
                     switch(GPU_INFO(data)) {
-                        case 0x0:
-                        case 0x1:
-                        case 0x6:
                         case 0x8 ... 0xf:
                             printx("/// PSeudo GPU info: %d", GPU_INFO(data));
                             return;
                     }
-                    
+
                     ret.data = info[GPU_INFO(data)];
                     return;
                     
@@ -232,7 +281,7 @@ int CstrGraphics::fetchMem(uh *ptr, sw size) {
                 vrop.raw[count] = tcache.pixel2texel(*ptr);
             }
             
-            vram.ptr[(vrop.v.p << 10) + vrop.h.p] = *ptr;
+            writeVramPixel((vrop.v.p << 10) + vrop.h.p, *ptr);
             vrop.h.p++;
             ptr++;
             
@@ -318,9 +367,37 @@ void CstrGraphics::photoMoveWithin(uw *packets) {
     
     for (int v = 0; v < iH; v++) {
         for (int h = 0; h < iW; h++) {
-            vram.ptr[((dstY + v) << 10) + dstX + h] = vram.ptr[((srcY + v) << 10) + srcX + h];
+            writeVramPixel(((dstY + v) << 10) + dstX + h,
+                           vram.ptr[((srcY + v) << 10) + srcX + h]);
         }
     }
+}
+
+void CstrGraphics::photoFill(uw *packets) {
+    // GP0(02h): quick VRAM fill — ignores mask bits, forces bit15=0
+    const ub r =  packets[0]        & 0xff;
+    const ub g = (packets[0] >>  8) & 0xff;
+    const ub b = (packets[0] >> 16) & 0xff;
+    const uh pixel = (uh)((r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10));
+
+    uh x = (packets[1] >>  0) & 0x3f0;
+    uh y = (packets[1] >> 16) & 0x1ff;
+    uh w = (uh)((((packets[2] >>  0) & 0x3ff) + 0x0f) & ~0x0f);
+    uh h = (packets[2] >> 16) & 0x1ff;
+
+    if (w == 0 || h == 0) {
+        return;
+    }
+
+    for (uh v = 0; v < h; v++) {
+        const uh py = (uh)((y + v) & (FRAME_H - 1));
+        for (uh u = 0; u < w; u++) {
+            const uh px = (uh)((x + u) & (FRAME_W - 1));
+            vram.ptr[(py << 10) + px] = pixel;
+        }
+    }
+
+    tcache.invalidate(x, y, w, h);
 }
 
 void CstrGraphics::photoSendTo(uw *packets) {

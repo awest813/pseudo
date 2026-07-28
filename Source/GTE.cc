@@ -204,6 +204,27 @@
 
 CstrCop2 cop2;
 
+// Unsigned Newton-Raphson reciprocal table for RTPS/RTPT (257 entries)
+static const ub unrTable[257] = {
+    0xff,0xfd,0xfb,0xf9,0xf7,0xf5,0xf3,0xf1,0xef,0xee,0xec,0xea,0xe8,0xe6,0xe4,0xe3,
+    0xe1,0xdf,0xdd,0xdc,0xda,0xd8,0xd6,0xd5,0xd3,0xd1,0xd0,0xce,0xcd,0xcb,0xc9,0xc8,
+    0xc6,0xc5,0xc3,0xc1,0xc0,0xbe,0xbd,0xbb,0xba,0xb8,0xb7,0xb5,0xb4,0xb2,0xb1,0xb0,
+    0xae,0xad,0xab,0xaa,0xa9,0xa7,0xa6,0xa4,0xa3,0xa2,0xa0,0x9f,0x9e,0x9c,0x9b,0x9a,
+    0x99,0x97,0x96,0x95,0x94,0x92,0x91,0x90,0x8f,0x8d,0x8c,0x8b,0x8a,0x89,0x87,0x86,
+    0x85,0x84,0x83,0x82,0x81,0x7f,0x7e,0x7d,0x7c,0x7b,0x7a,0x79,0x78,0x77,0x75,0x74,
+    0x73,0x72,0x71,0x70,0x6f,0x6e,0x6d,0x6c,0x6b,0x6a,0x69,0x68,0x67,0x66,0x65,0x64,
+    0x63,0x62,0x61,0x60,0x5f,0x5e,0x5d,0x5d,0x5c,0x5b,0x5a,0x59,0x58,0x57,0x56,0x55,
+    0x54,0x53,0x53,0x52,0x51,0x50,0x4f,0x4e,0x4d,0x4d,0x4c,0x4b,0x4a,0x49,0x48,0x48,
+    0x47,0x46,0x45,0x44,0x43,0x43,0x42,0x41,0x40,0x3f,0x3f,0x3e,0x3d,0x3c,0x3c,0x3b,
+    0x3a,0x39,0x39,0x38,0x37,0x36,0x36,0x35,0x34,0x33,0x33,0x32,0x31,0x31,0x30,0x2f,
+    0x2e,0x2e,0x2d,0x2c,0x2c,0x2b,0x2a,0x2a,0x29,0x28,0x28,0x27,0x26,0x26,0x25,0x24,
+    0x24,0x23,0x22,0x22,0x21,0x20,0x20,0x1f,0x1e,0x1e,0x1d,0x1d,0x1c,0x1b,0x1b,0x1a,
+    0x19,0x19,0x18,0x18,0x17,0x16,0x16,0x15,0x15,0x14,0x14,0x13,0x12,0x12,0x11,0x11,
+    0x10,0x0f,0x0f,0x0e,0x0e,0x0d,0x0d,0x0c,0x0c,0x0b,0x0a,0x0a,0x09,0x09,0x08,0x08,
+    0x07,0x07,0x06,0x06,0x05,0x05,0x04,0x04,0x03,0x03,0x02,0x02,0x01,0x01,0x00,0x00,
+    0x00
+};
+
 void CstrCop2::reset() {
     cop2c = { 0 };
     cop2d = { 0 };
@@ -223,11 +244,21 @@ uw CstrCop2::limE(uw result) {
     return result;
 }
 
-uw CstrCop2::divide(sh n, uh d) {
-    if (n >= 0 && n < d * 2) {
-        return ((((sw)n) << 16) + d / 2) / d;
+uw CstrCop2::divide(uh n, uh d) {
+    // Hardware UNR reciprocal (psx-spx "GTE Division Inaccuracy")
+    if ((uw)n < (uw)d * 2u) {
+        const uw z = (uw)(__builtin_clz((uw)d) - 16);
+        ud nn = (uw)n << z;
+        uw dd = (uw)d << z;
+        const uw u = unrTable[(dd - 0x7fc0) >> 7] + 0x101;
+        dd = ((0x2000080u - (dd * u)) >> 8);
+        dd = ((0x0000080u + (dd * u)) >> 8);
+        nn = (nn * dd + 0x8000) >> 16;
+        return nn > 0x1ffff ? 0x1ffff : (uw)nn;
     }
-    return 0xffffffff;
+
+    FLAG |= SETF(17) | SETF(31);
+    return 0x1ffff;
 }
 
 void CstrCop2::execute(uw code) {
@@ -256,18 +287,34 @@ void CstrCop2::execute(uw code) {
             
         case 1: // RTPS
             {
+                sw sh = _SF(op) * 12;
+                sw lm = _LM(op);
+
                 FLAG = 0;
                 
-                MAC1 = A1((((sd)TRX << 12) + (R11 * VX0) + (R12 * VY0) + (R13 * VZ0)) >> 12);
-                MAC2 = A2((((sd)TRY << 12) + (R21 * VX0) + (R22 * VY0) + (R23 * VZ0)) >> 12);
-                MAC3 = A3((((sd)TRZ << 12) + (R31 * VX0) + (R32 * VY0) + (R33 * VZ0)) >> 12);
-                
-                MAC2IR(0);
+                sd mac1 = ((sd)TRX << 12) + (R11 * VX0) + (R12 * VY0) + (R13 * VZ0);
+                sd mac2 = ((sd)TRY << 12) + (R21 * VX0) + (R22 * VY0) + (R23 * VZ0);
+                sd mac3 = ((sd)TRZ << 12) + (R31 * VX0) + (R32 * VY0) + (R33 * VZ0);
+
+                MAC1 = A1(mac1 >> sh);
+                MAC2 = A2(mac2 >> sh);
+                MAC3 = A3(mac3 >> sh);
+
+                IR1 = limB1(MAC1, lm);
+                IR2 = limB2(MAC2, lm);
+                // FLAG.22 from (mac3>>12) as lm=0; stored IR3 clamps MAC3 with lm
+                (void)limB3((sw)(mac3 >> 12), 0);
+                if (lm) {
+                    IR3 = MAC3 < 0 ? 0 : (MAC3 > 32767 ? 32767 : (sw)MAC3);
+                }
+                else {
+                    IR3 = MAC3 < -32768 ? -32768 : (MAC3 > 32767 ? 32767 : (sw)MAC3);
+                }
                 
                 SZ0 = SZ1;
                 SZ1 = SZ2;
                 SZ2 = SZ3;
-                SZ3 = limD(MAC3);
+                SZ3 = limD(mac3 >> 12);
                 
                 sw quotient = limE(divide(H, SZ3));
                 
@@ -283,6 +330,8 @@ void CstrCop2::execute(uw code) {
             
         case 48: // RTPT
             {
+                sw sh = _SF(op) * 12;
+                sw lm = _LM(op);
                 sw quotient = -1;
                 
                 FLAG = 0;
@@ -293,13 +342,25 @@ void CstrCop2::execute(uw code) {
                     sw v2 = VY(v);
                     sw v3 = VZ(v);
                     
-                    MAC1 = A1((((sd)TRX << 12) + (R11 * v1) + (R12 * v2) + (R13 * v3)) >> 12);
-                    MAC2 = A2((((sd)TRY << 12) + (R21 * v1) + (R22 * v2) + (R23 * v3)) >> 12);
-                    MAC3 = A3((((sd)TRZ << 12) + (R31 * v1) + (R32 * v2) + (R33 * v3)) >> 12);
+                    sd mac1 = ((sd)TRX << 12) + (R11 * v1) + (R12 * v2) + (R13 * v3);
+                    sd mac2 = ((sd)TRY << 12) + (R21 * v1) + (R22 * v2) + (R23 * v3);
+                    sd mac3 = ((sd)TRZ << 12) + (R31 * v1) + (R32 * v2) + (R33 * v3);
+
+                    MAC1 = A1(mac1 >> sh);
+                    MAC2 = A2(mac2 >> sh);
+                    MAC3 = A3(mac3 >> sh);
+
+                    IR1 = limB1(MAC1, lm);
+                    IR2 = limB2(MAC2, lm);
+                    (void)limB3((sw)(mac3 >> 12), 0);
+                    if (lm) {
+                        IR3 = MAC3 < 0 ? 0 : (MAC3 > 32767 ? 32767 : (sw)MAC3);
+                    }
+                    else {
+                        IR3 = MAC3 < -32768 ? -32768 : (MAC3 > 32767 ? 32767 : (sw)MAC3);
+                    }
                     
-                    MAC2IR(0);
-                    
-                    SZ(v) = limD(MAC3);
+                    SZ(v) = limD(mac3 >> 12);
                     quotient = limE(divide(H, SZ(v)));
                     
                     SX(v) = limG1(F((sd)OFX + ((sd)IR1 * quotient)) >> 16);
@@ -340,9 +401,9 @@ void CstrCop2::execute(uw code) {
                 
                 FLAG = 0;
                 
-                MAC1 = A1(((R << 16) + (IR0 * limB1(A1((sd)RFC - (R << 4)) << (12 - sh), 0))) >> 12);
-                MAC2 = A2(((G << 16) + (IR0 * limB2(A2((sd)GFC - (G << 4)) << (12 - sh), 0))) >> 12);
-                MAC3 = A3(((B << 16) + (IR0 * limB3(A3((sd)BFC - (B << 4)) << (12 - sh), 0))) >> 12);
+                MAC1 = A1(((R << 16) + (IR0 * limB1(A1((sd)RFC - (R << 4)) << (12 - sh), 0))) >> sh);
+                MAC2 = A2(((G << 16) + (IR0 * limB2(A2((sd)GFC - (G << 4)) << (12 - sh), 0))) >> sh);
+                MAC3 = A3(((B << 16) + (IR0 * limB3(A3((sd)BFC - (B << 4)) << (12 - sh), 0))) >> sh);
                 
                 MAC2IR(0);
                 
@@ -352,12 +413,14 @@ void CstrCop2::execute(uw code) {
             
         case 42: // DPCT
             {
+                sw sh = _SF(op) * 12;
+
                 FLAG = 0;
                 
                 for (int v = 0; v < 3; v++) {
-                    MAC1 = A1((((sd)R0 << 16) + ((sd)IR0 * (limB1(RFC - (R0 << 4), 0)))) >> 12);
-                    MAC2 = A2((((sd)G0 << 16) + ((sd)IR0 * (limB2(GFC - (G0 << 4), 0)))) >> 12);
-                    MAC3 = A3((((sd)B0 << 16) + ((sd)IR0 * (limB3(BFC - (B0 << 4), 0)))) >> 12);
+                    MAC1 = A1((((sd)R0 << 16) + ((sd)IR0 * (limB1(RFC - (R0 << 4), 0)))) >> sh);
+                    MAC2 = A2((((sd)G0 << 16) + ((sd)IR0 * (limB2(GFC - (G0 << 4), 0)))) >> sh);
+                    MAC3 = A3((((sd)B0 << 16) + ((sd)IR0 * (limB3(BFC - (B0 << 4), 0)))) >> sh);
                     
                     MAC2RGB4();
                 }
@@ -393,38 +456,67 @@ void CstrCop2::execute(uw code) {
                 sw v1 = VX(v);
                 sw v2 = VY(v);
                 sw v3 = VZ(v);
-                
+
                 FLAG = 0;
-                
-                MAC1 = A1((((sd)CV1(cv) << 12) + (MX11(mx) * v1) + (MX12(mx) * v2) + (MX13(mx) * v3)) >> sh);
-                MAC2 = A2((((sd)CV2(cv) << 12) + (MX21(mx) * v1) + (MX22(mx) * v2) + (MX23(mx) * v3)) >> sh);
-                MAC3 = A3((((sd)CV3(cv) << 12) + (MX31(mx) * v1) + (MX32(mx) * v2) + (MX33(mx) * v3)) >> sh);
-                
+
+                sw m11, m12, m13, m21, m22, m23, m31, m32, m33;
+                if (mx < 3) {
+                    m11 = MX11(mx); m12 = MX12(mx); m13 = MX13(mx);
+                    m21 = MX21(mx); m22 = MX22(mx); m23 = MX23(mx);
+                    m31 = MX31(mx); m32 = MX32(mx); m33 = MX33(mx);
+                }
+                else {
+                    // Garbage matrix: [-R*10h, +R*10h, IR0, R13, R13, R13, R22, R22, R22]
+                    const sw r16 = (sw)R * 0x10;
+                    m11 = -r16; m12 = r16;  m13 = IR0;
+                    m21 = R13;  m22 = R13;  m23 = R13;
+                    m31 = R22;  m32 = R22;  m33 = R22;
+                }
+
+                if (cv == 2) {
+                    // FC translation is bugged: FLAG bits follow the full
+                    // formula, but MAC omits Tx and the Mx11*Vx1 term.
+                    A1((((sd)RFC << 12) + (m11 * v1) + (m12 * v2) + (m13 * v3)) >> sh);
+                    A2((((sd)GFC << 12) + (m21 * v1) + (m22 * v2) + (m23 * v3)) >> sh);
+                    A3((((sd)BFC << 12) + (m31 * v1) + (m32 * v2) + (m33 * v3)) >> sh);
+                    MAC1 = (sw)(((sd)(m12 * v2) + (m13 * v3)) >> sh);
+                    MAC2 = (sw)(((sd)(m22 * v2) + (m23 * v3)) >> sh);
+                    MAC3 = (sw)(((sd)(m32 * v2) + (m33 * v3)) >> sh);
+                }
+                else {
+                    MAC1 = A1((((sd)CV1(cv) << 12) + (m11 * v1) + (m12 * v2) + (m13 * v3)) >> sh);
+                    MAC2 = A2((((sd)CV2(cv) << 12) + (m21 * v1) + (m22 * v2) + (m23 * v3)) >> sh);
+                    MAC3 = A3((((sd)CV3(cv) << 12) + (m31 * v1) + (m32 * v2) + (m33 * v3)) >> sh);
+                }
+
                 MAC2IR(lm);
             }
             return;
             
         case 19: // NCDS
             {
+                sw sh = _SF(op) * 12;
+                sw lm = _LM(op);
+
                 FLAG = 0;
                 
-                MAC1 = A1((((sd)L11 * VX0) + (L12 * VY0) + (L13 * VZ0)) >> 12);
-                MAC2 = A2((((sd)L21 * VX0) + (L22 * VY0) + (L23 * VZ0)) >> 12);
-                MAC3 = A3((((sd)L31 * VX0) + (L32 * VY0) + (L33 * VZ0)) >> 12);
+                MAC1 = A1((((sd)L11 * VX0) + (L12 * VY0) + (L13 * VZ0)) >> sh);
+                MAC2 = A2((((sd)L21 * VX0) + (L22 * VY0) + (L23 * VZ0)) >> sh);
+                MAC3 = A3((((sd)L31 * VX0) + (L32 * VY0) + (L33 * VZ0)) >> sh);
                 
-                MAC2IR(1);
+                MAC2IR(lm);
                 
-                MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> 12);
-                MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> 12);
-                MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> 12);
+                MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> sh);
+                MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> sh);
+                MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> sh);
                 
-                MAC2IR(1);
+                MAC2IR(lm);
                 
-                MAC1 = A1(((((sd)R << 4) * IR1) + (IR0 * limB1(RFC - ((R * IR1) >> 8), 0))) >> 12);
-                MAC2 = A2(((((sd)G << 4) * IR2) + (IR0 * limB2(GFC - ((G * IR2) >> 8), 0))) >> 12);
-                MAC3 = A3(((((sd)B << 4) * IR3) + (IR0 * limB3(BFC - ((B * IR3) >> 8), 0))) >> 12);
+                MAC1 = A1(((((sd)R << 4) * IR1) + (IR0 * limB1(RFC - ((R * IR1) >> 8), 0))) >> sh);
+                MAC2 = A2(((((sd)G << 4) * IR2) + (IR0 * limB2(GFC - ((G * IR2) >> 8), 0))) >> sh);
+                MAC3 = A3(((((sd)B << 4) * IR3) + (IR0 * limB3(BFC - ((B * IR3) >> 8), 0))) >> sh);
                 
-                MAC2IR(1);
+                MAC2IR(lm);
                 
                 MAC2RGB4();
             }
@@ -432,6 +524,9 @@ void CstrCop2::execute(uw code) {
             
         case 22: // NCDT
             {
+                sw sh = _SF(op) * 12;
+                sw lm = _LM(op);
+
                 FLAG = 0;
                 
                 for (int v = 0; v < 3; v++) {
@@ -439,44 +534,47 @@ void CstrCop2::execute(uw code) {
                     sw v2 = VY(v);
                     sw v3 = VZ(v);
                     
-                    MAC1 = A1((((sd)L11 * v1) + (L12 * v2) + (L13 * v3)) >> 12);
-                    MAC2 = A2((((sd)L21 * v1) + (L22 * v2) + (L23 * v3)) >> 12);
-                    MAC3 = A3((((sd)L31 * v1) + (L32 * v2) + (L33 * v3)) >> 12);
+                    MAC1 = A1((((sd)L11 * v1) + (L12 * v2) + (L13 * v3)) >> sh);
+                    MAC2 = A2((((sd)L21 * v1) + (L22 * v2) + (L23 * v3)) >> sh);
+                    MAC3 = A3((((sd)L31 * v1) + (L32 * v2) + (L33 * v3)) >> sh);
                     
-                    MAC2IR(1);
+                    MAC2IR(lm);
                     
-                    MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> 12);
-                    MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> 12);
-                    MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> 12);
+                    MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> sh);
+                    MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> sh);
+                    MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> sh);
                     
-                    MAC2IR(1);
+                    MAC2IR(lm);
                     
-                    MAC1 = A1(((((sd)R << 4) * IR1) + (IR0 * limB1(RFC - ((R * IR1) >> 8), 0))) >> 12);
-                    MAC2 = A2(((((sd)G << 4) * IR2) + (IR0 * limB2(GFC - ((G * IR2) >> 8), 0))) >> 12);
-                    MAC3 = A3(((((sd)B << 4) * IR3) + (IR0 * limB3(BFC - ((B * IR3) >> 8), 0))) >> 12);
+                    MAC1 = A1(((((sd)R << 4) * IR1) + (IR0 * limB1(RFC - ((R * IR1) >> 8), 0))) >> sh);
+                    MAC2 = A2(((((sd)G << 4) * IR2) + (IR0 * limB2(GFC - ((G * IR2) >> 8), 0))) >> sh);
+                    MAC3 = A3(((((sd)B << 4) * IR3) + (IR0 * limB3(BFC - ((B * IR3) >> 8), 0))) >> sh);
                     
                     MAC2RGB4();
                 }
                 
-                MAC2IR(1);
+                MAC2IR(lm);
             }
             return;
             
         case 20: // CDP
             {
+                sw sh = _SF(op) * 12;
+                sw lm = _LM(op);
+
                 FLAG = 0;
                 
-                MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> 12);
-                MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> 12);
-                MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> 12);
+                MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> sh);
+                MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> sh);
+                MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> sh);
                 
-                MAC2IR(1);
+                MAC2IR(lm);
                 
-                MAC1 = A1(((((sd)R << 4) * IR1) + (IR0 * limB1(RFC - ((R * IR1) >> 8), 0))) >> 12);
-                MAC2 = A2(((((sd)G << 4) * IR2) + (IR0 * limB2(GFC - ((G * IR2) >> 8), 0))) >> 12);
-                MAC3 = A3(((((sd)B << 4) * IR3) + (IR0 * limB3(BFC - ((B * IR3) >> 8), 0))) >> 12);
+                MAC1 = A1(((((sd)R << 4) * IR1) + (IR0 * limB1(RFC - ((R * IR1) >> 8), 0))) >> sh);
+                MAC2 = A2(((((sd)G << 4) * IR2) + (IR0 * limB2(GFC - ((G * IR2) >> 8), 0))) >> sh);
+                MAC3 = A3(((((sd)B << 4) * IR3) + (IR0 * limB3(BFC - ((B * IR3) >> 8), 0))) >> sh);
                 
-                MAC2IR(1);
+                MAC2IR(lm);
                 
                 MAC2RGB4();
             }
@@ -484,25 +582,28 @@ void CstrCop2::execute(uw code) {
             
         case 27: // NCCS
             {
+                sw sh = _SF(op) * 12;
+                sw lm = _LM(op);
+
                 FLAG = 0;
                 
-                MAC1 = A1((((sd)L11 * VX0) + (L12 * VY0) + (L13 * VZ0)) >> 12);
-                MAC2 = A2((((sd)L21 * VX0) + (L22 * VY0) + (L23 * VZ0)) >> 12);
-                MAC3 = A3((((sd)L31 * VX0) + (L32 * VY0) + (L33 * VZ0)) >> 12);
+                MAC1 = A1((((sd)L11 * VX0) + (L12 * VY0) + (L13 * VZ0)) >> sh);
+                MAC2 = A2((((sd)L21 * VX0) + (L22 * VY0) + (L23 * VZ0)) >> sh);
+                MAC3 = A3((((sd)L31 * VX0) + (L32 * VY0) + (L33 * VZ0)) >> sh);
                 
-                MAC2IR(1);
+                MAC2IR(lm);
                 
-                MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> 12);
-                MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> 12);
-                MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> 12);
+                MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> sh);
+                MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> sh);
+                MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> sh);
                 
-                MAC2IR(1);
+                MAC2IR(lm);
                 
-                MAC1 = A1(((sd)R * IR1) >> 8);
-                MAC2 = A2(((sd)G * IR2) >> 8);
-                MAC3 = A3(((sd)B * IR3) >> 8);
+                MAC1 = A1((((sd)R * IR1) << 4) >> sh);
+                MAC2 = A2((((sd)G * IR2) << 4) >> sh);
+                MAC3 = A3((((sd)B * IR3) << 4) >> sh);
                 
-                MAC2IR(1);
+                MAC2IR(lm);
                 
                 MAC2RGB4();
             }
@@ -510,6 +611,9 @@ void CstrCop2::execute(uw code) {
             
         case 63: // NCCT
             {
+                sw sh = _SF(op) * 12;
+                sw lm = _LM(op);
+
                 FLAG = 0;
                 
                 for (int v = 0; v < 3; v++) {
@@ -517,44 +621,47 @@ void CstrCop2::execute(uw code) {
                     sw v2 = VY(v);
                     sw v3 = VZ(v);
                     
-                    MAC1 = A1((((sd)L11 * v1) + (L12 * v2) + (L13 * v3)) >> 12);
-                    MAC2 = A2((((sd)L21 * v1) + (L22 * v2) + (L23 * v3)) >> 12);
-                    MAC3 = A3((((sd)L31 * v1) + (L32 * v2) + (L33 * v3)) >> 12);
+                    MAC1 = A1((((sd)L11 * v1) + (L12 * v2) + (L13 * v3)) >> sh);
+                    MAC2 = A2((((sd)L21 * v1) + (L22 * v2) + (L23 * v3)) >> sh);
+                    MAC3 = A3((((sd)L31 * v1) + (L32 * v2) + (L33 * v3)) >> sh);
                     
-                    MAC2IR(1);
+                    MAC2IR(lm);
                     
-                    MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> 12);
-                    MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> 12);
-                    MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> 12);
+                    MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> sh);
+                    MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> sh);
+                    MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> sh);
                     
-                    MAC2IR(1);
+                    MAC2IR(lm);
                     
-                    MAC1 = A1(((sd)R * IR1) >> 8);
-                    MAC2 = A2(((sd)G * IR2) >> 8);
-                    MAC3 = A3(((sd)B * IR3) >> 8);
+                    MAC1 = A1((((sd)R * IR1) << 4) >> sh);
+                    MAC2 = A2((((sd)G * IR2) << 4) >> sh);
+                    MAC3 = A3((((sd)B * IR3) << 4) >> sh);
                     
                     MAC2RGB4();
                 }
                 
-                MAC2IR(1);
+                MAC2IR(lm);
             }
             return;
             
         case 28: // CC
             {
+                sw sh = _SF(op) * 12;
+                sw lm = _LM(op);
+
                 FLAG = 0;
                 
-                MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> 12);
-                MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> 12);
-                MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> 12);
+                MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> sh);
+                MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> sh);
+                MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> sh);
                 
-                MAC2IR(1);
+                MAC2IR(lm);
                 
-                MAC1 = A1(((sd)R * IR1) >> 8);
-                MAC2 = A2(((sd)G * IR2) >> 8);
-                MAC3 = A3(((sd)B * IR3) >> 8);
+                MAC1 = A1((((sd)R * IR1) << 4) >> sh);
+                MAC2 = A2((((sd)G * IR2) << 4) >> sh);
+                MAC3 = A3((((sd)B * IR3) << 4) >> sh);
                 
-                MAC2IR(1);
+                MAC2IR(lm);
                 
                 MAC2RGB4();
             }
@@ -562,19 +669,22 @@ void CstrCop2::execute(uw code) {
             
         case 30: // NCS
             {
+                sw sh = _SF(op) * 12;
+                sw lm = _LM(op);
+
                 FLAG = 0;
                 
-                MAC1 = A1((((sd)L11 * VX0) + (L12 * VY0) + (L13 * VZ0)) >> 12);
-                MAC2 = A2((((sd)L21 * VX0) + (L22 * VY0) + (L23 * VZ0)) >> 12);
-                MAC3 = A3((((sd)L31 * VX0) + (L32 * VY0) + (L33 * VZ0)) >> 12);
+                MAC1 = A1((((sd)L11 * VX0) + (L12 * VY0) + (L13 * VZ0)) >> sh);
+                MAC2 = A2((((sd)L21 * VX0) + (L22 * VY0) + (L23 * VZ0)) >> sh);
+                MAC3 = A3((((sd)L31 * VX0) + (L32 * VY0) + (L33 * VZ0)) >> sh);
                 
-                MAC2IR(1);
+                MAC2IR(lm);
                 
-                MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> 12);
-                MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> 12);
-                MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> 12);
+                MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> sh);
+                MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> sh);
+                MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> sh);
                 
-                MAC2IR(1);
+                MAC2IR(lm);
                 
                 MAC2RGB4();
             }
@@ -582,6 +692,9 @@ void CstrCop2::execute(uw code) {
             
         case 32: // NCT
             {
+                sw sh = _SF(op) * 12;
+                sw lm = _LM(op);
+
                 FLAG = 0;
                 
                 for (int v = 0; v < 3; v++) {
@@ -589,20 +702,20 @@ void CstrCop2::execute(uw code) {
                     sw v2 = VY(v);
                     sw v3 = VZ(v);
                     
-                    MAC1 = A1((((sd)L11 * v1) + (L12 * v2) + (L13 * v3)) >> 12);
-                    MAC2 = A2((((sd)L21 * v1) + (L22 * v2) + (L23 * v3)) >> 12);
-                    MAC3 = A3((((sd)L31 * v1) + (L32 * v2) + (L33 * v3)) >> 12);
+                    MAC1 = A1((((sd)L11 * v1) + (L12 * v2) + (L13 * v3)) >> sh);
+                    MAC2 = A2((((sd)L21 * v1) + (L22 * v2) + (L23 * v3)) >> sh);
+                    MAC3 = A3((((sd)L31 * v1) + (L32 * v2) + (L33 * v3)) >> sh);
                     
-                    MAC2IR(1);
+                    MAC2IR(lm);
                     
-                    MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> 12);
-                    MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> 12);
-                    MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> 12);
+                    MAC1 = A1((((sd)RBK << 12) + (LR1 * IR1) + (LR2 * IR2) + (LR3 * IR3)) >> sh);
+                    MAC2 = A2((((sd)GBK << 12) + (LG1 * IR1) + (LG2 * IR2) + (LG3 * IR3)) >> sh);
+                    MAC3 = A3((((sd)BBK << 12) + (LB1 * IR1) + (LB2 * IR2) + (LB3 * IR3)) >> sh);
                     
                     MAC2RGB4();
                 }
                 
-                MAC2IR(1);
+                MAC2IR(lm);
             }
             return;
             
@@ -623,17 +736,18 @@ void CstrCop2::execute(uw code) {
             
         case 41: // DCPL
             {
+                sw sh = _SF(op) * 12;
                 sw lm = _LM(op);
                 
-                sd RIR1 = ((sd)R * IR1) >> 8;
-                sd GIR2 = ((sd)G * IR2) >> 8;
-                sd BIR3 = ((sd)B * IR3) >> 8;
+                sd RIR1 = ((sd)R * IR1) << 4;
+                sd GIR2 = ((sd)G * IR2) << 4;
+                sd BIR3 = ((sd)B * IR3) << 4;
                 
                 FLAG = 0;
                 
-                MAC1 = A1(RIR1 + ((IR0 * limB1(RFC - RIR1, 0)) >> 12));
-                MAC2 = A2(GIR2 + ((IR0 * limB2(GFC - GIR2, 0)) >> 12));
-                MAC3 = A3(BIR3 + ((IR0 * limB3(BFC - BIR3, 0)) >> 12));
+                MAC1 = A1((RIR1 + (IR0 * limB1(RFC - (RIR1 >> 12), 0))) >> sh);
+                MAC2 = A2((GIR2 + (IR0 * limB2(GFC - (GIR2 >> 12), 0))) >> sh);
+                MAC3 = A3((BIR3 + (IR0 * limB3(BFC - (BIR3 >> 12), 0))) >> sh);
                 
                 MAC2IR(lm);
                 

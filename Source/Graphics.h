@@ -95,6 +95,7 @@ class CstrGraphics {
     
     int fetchMem(uh *, sw);
     int fetchMemEnd(int);
+    void writeVramPixel(uw index, uh pixel);
     
 public:
     enum {
@@ -125,12 +126,15 @@ public:
     void update(uw);
     void write(uw, uw);
     uw read(uw);
+    void setMask(uw);
+    void setDrawMode(uw);
     void executeDMA(CstrBus::castDMA *);
     
     // VRAM operations
     void photoMoveWithin(uw *);
     void photoSendTo(uw *);
     void photoReadFrom(uw *);
+    void photoFill(uw *);
     
     uh dispOffsetX, dispOffsetY, rx_l, rx_u;
 };
