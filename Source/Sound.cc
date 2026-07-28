@@ -30,7 +30,7 @@ void CstrAudio::reset() {
         item = { 0 };
     }
 
-    xaRead = xaWrite = xaCount = 0;
+    xaRead = xaWrite = xaCount = xaFrac = 0;
     xaReset(&xaState);
     cdVolL = cdVolR = 0x3fff;
 }
@@ -56,8 +56,13 @@ void CstrAudio::mixXA(int samples) {
 
         sbuf[(ns * 2) + 0] += (xaL[xaRead] * cdVolL) >> 14;
         sbuf[(ns * 2) + 1] += (xaR[xaRead] * cdVolR) >> 14;
-        xaRead = (xaRead + 1) % XA_BUF_SAMPLES;
-        xaCount--;
+
+        xaFrac += XA_SAMPLE_RATE;
+        while (xaFrac >= SPU_SAMPLE_RATE && xaCount > 0) {
+            xaFrac -= SPU_SAMPLE_RATE;
+            xaRead = (xaRead + 1) % XA_BUF_SAMPLES;
+            xaCount--;
+        }
     }
 }
 

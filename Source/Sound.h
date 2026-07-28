@@ -11,6 +11,7 @@ class CstrAudio {
         SPU_ALC_BUF_AMOUNT = 16
 #endif
         ,
+        XA_SAMPLE_RATE     = 37800,
         XA_BUF_SAMPLES = 32768
     };
     
@@ -42,6 +43,7 @@ class CstrAudio {
     sh xaL[XA_BUF_SAMPLES];
     sh xaR[XA_BUF_SAMPLES];
     int xaRead, xaWrite, xaCount;
+    int xaFrac;
     XADecodeState xaState;
     sh cdVolL, cdVolR;
 
