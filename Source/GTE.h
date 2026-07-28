@@ -11,7 +11,7 @@ class CstrCop2 {
     
     sd bounds(sd, uw, uw);
     uw limE(uw);
-    uw divide(sh, uh);
+    uw divide(uh, uh);
     
 public:
     void reset();

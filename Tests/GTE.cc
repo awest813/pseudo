@@ -129,6 +129,44 @@ int main() {
     cop2.MTC2(30, 0);
     check(cop2.MFC2(31) == 32, "LZCR: count of 0");
 
+    // --- UNR division: overflow when H >= SZ3*2 ---------------------------
+    cop2.reset();
+    cop2.CTC2(0, 0x1000);
+    cop2.CTC2(2, 0x1000);
+    cop2.CTC2(4, 0x1000);
+    cop2.CTC2(26, 0x200); // H
+    cop2.MTC2(0, pack(0, 0));
+    cop2.MTC2(1, 0x100);  // VZ0 -> SZ3 = 0x100; H >= SZ3*2
+    cop2.execute(0x01);
+    check((gteFlag() & (1u << 17)) != 0, "UNR: divide overflow sets FLAG bit 17");
+    check((gteFlag() & (1u << 31)) != 0, "UNR: divide overflow sets FLAG bit 31");
+
+    // --- UNR: FE3Fh/7F20h saturates to 1FFFFh without overflow flags ------
+    // Quotient is not readable, but FLAG.17 must stay clear (accurate
+    // division would also be near 20000h; the overflow check is H < SZ*2).
+    cop2.reset();
+    cop2.CTC2(0, 0x1000);
+    cop2.CTC2(2, 0x1000);
+    cop2.CTC2(4, 0x1000);
+    cop2.CTC2(26, 0xfe3f); // H
+    cop2.MTC2(0, pack(0x10, 0x20));
+    cop2.MTC2(1, 0x7f20);  // VZ0 -> SZ3
+    cop2.execute(0x01);
+    check((gteFlag() & (1u << 17)) == 0, "UNR: FE3F/7F20 no divide-overflow flag");
+    check(cop2.MFC2(19) == 0x7f20,       "UNR: FE3F/7F20 SZ3");
+
+    // --- UNR: 0/1 -> quotient 0, projects to OFX/OFY (0) ------------------
+    cop2.reset();
+    cop2.CTC2(0, 0x1000);
+    cop2.CTC2(2, 0x1000);
+    cop2.CTC2(4, 0x1000);
+    cop2.CTC2(26, 0); // H = 0
+    cop2.MTC2(0, pack(0x10, 0x20));
+    cop2.MTC2(1, 1);  // SZ3 = 1
+    cop2.execute(0x01);
+    check(cop2.MFC2(14) == pack(0, 0), "UNR: 0/1 projects to origin");
+    check((gteFlag() & (1u << 17)) == 0, "UNR: 0/1 no overflow flag");
+
     printf("\n%s (%d failure%s)\n", failed ? "FAILED" : "PASSED", failed, failed == 1 ? "" : "s");
     return failed ? 1 : 0;
 }
