@@ -56,3 +56,10 @@ controller the first entry boots after ten seconds.
 | Start                  | Start       |
 | L + R triggers + Start | Select      |
 | A + B + X + Y + Start  | quit        |
+
+## Saves
+
+PlayStation memory card data is stored in `/pc/memcard1.mcr` on hardware
+when a `/pc` filesystem is available (e.g. SD adapter or dcload host
+folder). Without `/pc`, the card starts empty each run until a writable
+path is configured.

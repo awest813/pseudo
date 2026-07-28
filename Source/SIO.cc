@@ -25,14 +25,17 @@ void CstrSerial::reset() {
     status = SIO_STAT_TX_READY | SIO_STAT_TX_EMPTY;
     index  = 0;
     step   = 0;
+    device = SIO_DEV_NONE;
     btnState = 0xffff;
-    
+
     // Default pad buffer
     bfr[0] = 0x00;
     bfr[1] = 0x41;
     bfr[2] = 0x5a;
     bfr[3] = 0xff;
     bfr[4] = 0xff;
+
+    memcard.reset();
 }
 
 void CstrSerial::padListener(int code, bool pushed) {
@@ -40,31 +43,31 @@ void CstrSerial::padListener(int code, bool pushed) {
     if (code ==  19) { // Select
         btnCheck(PAD_BTN_SELECT);
     }
-    
+
     if (code ==  18) { // Start
         btnCheck(PAD_BTN_START);
     }
-    
+
     if (code == 126) { // Up
         btnCheck(PAD_BTN_UP);
     }
-    
+
     if (code == 124) { // R
         btnCheck(PAD_BTN_RIGHT);
     }
-    
+
     if (code == 125) { // Down
         btnCheck(PAD_BTN_DOWN);
     }
-    
+
     if (code == 123) { // Left
         btnCheck(PAD_BTN_LEFT);
     }
-    
+
     if (code ==   7) { // X
         btnCheck(PAD_BTN_CROSS);
     }
-    
+
     if (code ==   6) { // Z
         btnCheck(PAD_BTN_CIRCLE);
     }
@@ -94,16 +97,17 @@ void CstrSerial::write16(uw addr, uh data) {
     switch(LOW_BITS(addr)) {
         case 0x104a:
             control = data & (~(SIO_CTRL_RESET_ERROR));
-            
+
             if (control & SIO_CTRL_RESET || !control) {
                 status  = SIO_STAT_TX_READY | SIO_STAT_TX_EMPTY;
-                
+
                 index = 0;
                 step  = 0;
+                device = SIO_DEV_NONE;
             }
             return;
     }
-    
+
     accessMem(mem.hwr, uh) = data;
 }
 
@@ -115,42 +119,57 @@ void CstrSerial::write08(uw addr, ub data) {
                     if (data & 0x40) {
                         index = 1;
                         step  = 2;
-                        
-                        if (data  == 0x42) {
+
+                        if (data == 0x81) {
+                            device = SIO_DEV_MEMCARD;
+                            memcard.begin();
+                            bfr[1] = 0xff;
+                        }
+                        else if (data == 0x42) {
+                            device = SIO_DEV_PAD;
                             bfr[1] = 0x41;
                         }
-                        else
-                        if (data  == 0x43) {
+                        else if (data == 0x43) {
+                            device = SIO_DEV_PAD;
                             bfr[1] = 0x43;
                         }
                         else {
+                            device = SIO_DEV_NONE;
                             printx("/// PSeudo SIO: Data == 0x%x", data);
                         }
                     }
                     else {
                         step = 0;
                     }
-                    
+
                     bus.interruptSet(CstrBus::INT_SIO0);
                     return;
-                    
+
                 case 2:
+                    if (device == SIO_DEV_MEMCARD) {
+                        memcard.hostByte(data);
+                        status &= (~(SIO_STAT_TX_EMPTY));
+                        status |= SIO_STAT_RX_READY;
+                        bus.interruptSet(CstrBus::INT_SIO0);
+                        return;
+                    }
+
                     if (++index == sizeof(bfr) - 1) {
                         step = 0;
                         return;
                     }
-                    
+
                     bus.interruptSet(CstrBus::INT_SIO0);
                     return;
             }
-            
+
             if (data == 1) {
                 status &= (~(SIO_STAT_TX_EMPTY));
                 status |= ( (SIO_STAT_RX_READY));
-                
+
                 index = 0;
                 step  = 1;
-                
+
                 if (control & SIO_CTRL_DTR) {
                     if (control & 0x2000) { // Controller 2
                         bfr[3] = 0xff;
@@ -164,7 +183,7 @@ void CstrSerial::write08(uw addr, ub data) {
             }
             return;
     }
-    
+
     accessMem(mem.hwr, ub) = data;
 }
 
@@ -178,17 +197,32 @@ ub CstrSerial::read08(uw addr) {
             if (!(status & SIO_STAT_RX_READY)) {
                 return 0;
             }
-            
+
+            if (device == SIO_DEV_MEMCARD && step >= 1) {
+                if (!memcard.ready()) {
+                    return 0xff;
+                }
+
+                const ub value = memcard.read();
+                if (!memcard.ready()) {
+                    status &= (~(SIO_STAT_RX_READY));
+                    status |= SIO_STAT_TX_EMPTY;
+                    step = 0;
+                    device = SIO_DEV_NONE;
+                }
+                return value;
+            }
+
             if (index == sizeof(bfr) - 1) {
                 status &= (~(SIO_STAT_RX_READY));
                 status |= ( (SIO_STAT_TX_EMPTY));
-                
+
                 if (step == 2) {
                     step  = 0;
                 }
             }
-            return bfr[index];
+            return bfr[index++];
     }
-    
+
     return accessMem(mem.hwr, ub);
 }

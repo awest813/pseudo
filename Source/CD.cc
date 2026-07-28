@@ -534,7 +534,9 @@ void CstrCD::write(uw addr, ub data) {
                         transfer.p += 12;
                         return;
                         
-                    case 0x20:
+                    case 0x20: // XA / ADPCM sector
+                        readed = 1;
+                        transfer.p = 0;
                         return;
                         
                     default:

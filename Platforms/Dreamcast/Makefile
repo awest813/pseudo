@@ -13,7 +13,7 @@
 
 SOURCE_DIR := ../../Source
 
-CORE_SRCS := Bus CD Counters Disc Draw GTE Graphics Hardware MDEC Mem \
+CORE_SRCS := Bus CD Counters Disc Draw GTE Graphics Hardware MDEC Mem Memcard \
              PSeudo R3000A SIO Sound TextureCache
 
 ifneq ($(wildcard $(KOS_BASE)/Makefile.rules),)
