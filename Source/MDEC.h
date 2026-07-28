@@ -1,11 +1,37 @@
 class CstrMotionDecoder {
+    enum {
+        STAT_FIFO_EMPTY   = 0x80000000,
+        STAT_FIFO_FULL    = 0x40000000,
+        STAT_BUSY         = 0x20000000,
+        STAT_DIN_REQ      = 0x10000000,
+        STAT_DOUT_REQ     = 0x08000000,
+        STAT_DEPTH_SHIFT  = 25,
+        STAT_SIGNED       = 0x01000000,
+        STAT_BIT15        = 0x00800000,
+        STAT_BLOCK_SHIFT  = 16,
+        STAT_RESET_VALUE  = 0x80040000,
+
+        CTRL_RESET        = 0x80000000,
+        CTRL_DIN_ENABLE   = 0x40000000,
+        CTRL_DOUT_ENABLE  = 0x20000000,
+
+        CMD_MASK          = 0xe0000000,
+        CMD_NOP           = 0x00000000,
+        CMD_DECODE        = 0x20000000,
+        CMD_QUANT         = 0x40000000,
+        CMD_SCALE         = 0x60000000,
+    };
+
     void MacroBlock(sw *, sw, sw);
     void idct(sw *, sw);
     void TabInit(sw *, ub *);
     uh *rl2blk(sw *, uh *);
     void Yuv15(sw *, uh *);
     void Yuv24(sw *, ub *);
-    
+    void updateStatus();
+    void setParamWords(uw words);
+    void reflectCmdBits(uw data);
+
     const sw zscan[64] = {
         0x00, 0x01, 0x08, 0x10, 0x09, 0x02, 0x03, 0x0a,
         0x11, 0x18, 0x20, 0x19, 0x12, 0x0b, 0x04, 0x05,
@@ -16,7 +42,7 @@ class CstrMotionDecoder {
         0x3a, 0x3b, 0x34, 0x2d, 0x26, 0x1f, 0x27, 0x2e,
         0x35, 0x3c, 0x3d, 0x36, 0x2f, 0x37, 0x3e, 0x3f,
     };
-    
+
     const sw aanscales[64] = {
         0x4000, 0x58c5, 0x539f, 0x4b42, 0x4000, 0x3249, 0x22a3, 0x11a8,
         0x58c5, 0x7b21, 0x73fc, 0x6862, 0x58c5, 0x45bf, 0x300b, 0x187e,
@@ -27,18 +53,25 @@ class CstrMotionDecoder {
         0x22a3, 0x300b, 0x2d41, 0x28ba, 0x22a3, 0x1b37, 0x12bf, 0x098e,
         0x11a8, 0x187e, 0x1712, 0x14c3, 0x11a8, 0x0de0, 0x098e, 0x04df,
     };
-    
+
+    bool dinEnable;
+    bool doutEnable;
+    bool busy;
+    bool outReady;
+    uw paramWords; // remaining parameter words (0 = none)
+    uh bit15;
+
 public:
     sw len;
     uh *rl;
     uw cmd, status;
     ub rtbl[0x300];
-    
+
     void reset();
-    
+
     void write(uw, uw);
     uw read(uw);
-    
+
     void executeDMA(CstrBus::castDMA *);
 };
 

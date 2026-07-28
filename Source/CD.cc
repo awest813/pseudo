@@ -535,15 +535,18 @@ void CstrCD::write(uw addr, ub data) {
                 transfer.p = 0;
 
                 switch (ret.mode & 0x30) {
-                    case 0x00:
+                    case 0x00: // 2048-byte user data
                         transfer.p += 12;
                         return;
-                        
-                    case 0x20: // XA / ADPCM sector
-                        readed = 1;
+
+                    case 0x10: // 2328-byte sector (header + data, no sync)
                         transfer.p = 0;
                         return;
-                        
+
+                    case 0x20: // 2340-byte / XA ADPCM sector
+                        transfer.p = 0;
+                        return;
+
                     default:
                         printx("/// PSeudo CD Write: %d switch 0x%x", (addr & 0xf), (ret.mode & 0x30));
                         return;
