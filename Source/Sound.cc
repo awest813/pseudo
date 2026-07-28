@@ -46,7 +46,7 @@ void CstrAudio::voiceOn(uw data) {
 
 void CstrAudio::decodeStream() {
     while(!psx.suspended) {
-        memset(&sbuf, 0, SPU_SAMPLE_SIZE);
+        memset(sbuf, 0, sizeof(sbuf));
         
         for (int n = 0; n < SPU_MAX_CHAN; n++) {
             auto &ch = spuVoices[n];

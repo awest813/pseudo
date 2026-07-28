@@ -6,8 +6,12 @@ class CstrTextureCache {
         TEX_15BIT,
         TEX_15BIT_2,
         
-        // Maximum texture cache
+        // Maximum texture cache (smaller on DC to save RAM)
+#ifdef DREAMCAST
+        TCACHE_MAX = 64
+#else
         TCACHE_MAX = 384
+#endif
     };
     
     struct { // Mem position of texture and color lookup table

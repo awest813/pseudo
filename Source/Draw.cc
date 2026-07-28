@@ -477,8 +477,8 @@ void CstrDraw::primitive(uw addr, uw *packets) {
                     vs.info[vs.GPU_INFO_DRAW_OFFSET] = packets[0] & 0x7fffff;
                     return;
                     
-                case 0xe6: // TODO: STP
-                    //printf("/// PSeudo GPU STP: 0x%x\n", packets[0]);
+                case 0xe6: // STP (mask bit settings)
+                    vs.setMask(packets[0]);
                     return;
             }
             

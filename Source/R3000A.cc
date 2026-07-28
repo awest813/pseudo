@@ -68,7 +68,12 @@ void CstrMips::bootstrap() {
 }
 
 void CstrMips::run() {
+#ifdef DREAMCAST
+    // Larger batches amortize rootc/vs/cd/bus updates on the SH4
+    const int threshold = 512;
+#else
     const int threshold = 100;
+#endif
     
     while(!psx.suspended) {
         for (int i = 0; i < threshold; i++) {

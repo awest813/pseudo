@@ -112,6 +112,8 @@ static uw menuButtons(void) {
     }
 
     uw b = (uw)(state->buttons & 0xffff);
+    if (state->joyx < -DC_STICK_THRESHOLD) b |= CONT_DPAD_LEFT;
+    if (state->joyx >  DC_STICK_THRESHOLD) b |= CONT_DPAD_RIGHT;
     if (state->joyy < -DC_STICK_THRESHOLD) b |= CONT_DPAD_UP;
     if (state->joyy >  DC_STICK_THRESHOLD) b |= CONT_DPAD_DOWN;
     return b;
@@ -151,6 +153,8 @@ int menuPickGame(const MediaEntry *items, int count) {
 
         if (pressed & CONT_DPAD_UP)   sel = (sel + total - 1) % total;
         if (pressed & CONT_DPAD_DOWN) sel = (sel + 1) % total;
+        if (pressed & CONT_DPAD_LEFT)  sel = (sel + total - MENU_VISIBLE) % total;
+        if (pressed & CONT_DPAD_RIGHT) sel = (sel + MENU_VISIBLE) % total;
         if (pressed & (CONT_A | CONT_START)) {
             return sel < count ? sel : -1;
         }
@@ -192,7 +196,7 @@ int menuPickGame(const MediaEntry *items, int count) {
         }
 
         glColor4ub(120, 120, 140, 255);
-        drawText(40, 440, "DPAD move  A/START boot  B BIOS");
+        drawText(40, 440, "DPAD move  L/R page  A/START boot  B BIOS");
 
         glDisable(GL_TEXTURE_2D);
         glDisable(GL_BLEND);

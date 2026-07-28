@@ -55,6 +55,19 @@ void CstrGraphics::update(uw frames) {
     }
 }
 
+void CstrGraphics::setMask(uw data) {
+    ret.status &= ~(GPU_STAT_MASKDRAWN | GPU_STAT_MASKENABLED | GPU_STAT_DRAWINGALLOWED);
+    if (data & 1) {
+        ret.status |= GPU_STAT_MASKDRAWN;
+    }
+    if (data & 2) {
+        ret.status |= GPU_STAT_MASKENABLED;
+    }
+    if (!(data & 4)) {
+        ret.status |= GPU_STAT_DRAWINGALLOWED;
+    }
+}
+
 void CstrGraphics::write(uw addr, uw data) {
     switch(addr & 0xf) {
         case 0: // Data

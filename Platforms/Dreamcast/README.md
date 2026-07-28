@@ -28,7 +28,7 @@ PSeudo detects media by content, not by file name, scanning the romdisk
 | Media    | Detection                                              |
 |----------|--------------------------------------------------------|
 | PS1 BIOS | any 512KB dump, e.g. `SCPH1001.BIN` (not distributed)  |
-| Game     | raw disc image (2352 bytes/sector), or a `.cue` naming one |
+| Game     | raw disc image (2352 or 2048 bytes/sector), or a `.cue` naming one |
 | Homebrew | a PS-X EXE file                                        |
 
 Files placed in `romdisk/` are baked into the binary at `/rd`. The

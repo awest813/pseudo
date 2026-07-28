@@ -122,6 +122,9 @@ static MediaKind classify(const char *path) {
     if (size >= MEDIA_MIN_SECTORS * 2352 && size % 2352 == 0) {
         return MEDIA_DISC;
     }
+    if (size >= MEDIA_MIN_SECTORS * 2048 && size % 2048 == 0) {
+        return MEDIA_DISC;
+    }
     return MEDIA_NONE;
 }
 
