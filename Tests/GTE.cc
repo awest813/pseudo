@@ -115,11 +115,58 @@ int main() {
     cop2.MTC2(11, 0x100);      // IR3
     cop2.CTC2(22, 0x40000000); // GFC
     cop2.CTC2(23, 0x40000000); // BFC
-    cop2.execute(0x29);
+    cop2.execute(0x29 | (1 << 19)); // DCPL sf=1
 
     check((gteFlag() & (1u << 23)) != 0, "DCPL: G saturation raises IR2 flag (bit 23)");
     check((gteFlag() & (1u << 22)) != 0, "DCPL: B saturation raises IR3 flag (bit 22)");
     check((gteFlag() & (1u << 24)) == 0, "DCPL: R channel flag (bit 24) untouched");
+
+    // --- NCS respects SF/LM ----------------------------------------------
+    // Identity light+color matrices, V0=(0x10,0,0), RBK=0:
+    // with sf=1: MAC1 = (L11*VX0)>>12; with sf=0: no shift (much larger)
+    cop2.reset();
+    cop2.CTC2(8,  0x1000); // L11 = 1.0
+    cop2.CTC2(13, 0);      // RBK
+    cop2.CTC2(14, 0);
+    cop2.CTC2(15, 0);
+    // Color matrix identity
+    cop2.CTC2(16, 0x1000); // LR1
+    cop2.CTC2(18, 0x1000); // LG2
+    cop2.CTC2(20, 0x1000); // LB3
+    cop2.MTC2(0, pack(0x1000, 0)); // VX0=0x1000
+    cop2.MTC2(1, 0);
+    {
+        const uw code = 0x1e | (1 << 19) | (1 << 10); // NCS sf=1 lm=1
+        cop2.execute(code);
+    }
+    check(cop2.MFC2(25) == 0x1000, "NCS sf=1: MAC1");
+    check(cop2.MFC2(9)  == 0x1000, "NCS sf=1: IR1");
+
+    // Keep intermediates inside IR (±32767): L11*VX0 must fit before color stage
+    cop2.reset();
+    cop2.CTC2(8,  0x0020); // L11
+    cop2.CTC2(16, 0x0010); // LR1
+    cop2.CTC2(18, 0x1000);
+    cop2.CTC2(20, 0x1000);
+    cop2.MTC2(0, pack(0x10, 0)); // VX0
+    cop2.MTC2(1, 0);
+    {
+        const uw code = 0x1e; // NCS sf=0 lm=0
+        cop2.execute(code);
+    }
+    // light: 0x20*0x10 = 0x200; color: 0x10*0x200 = 0x2000 (no >>12)
+    check(cop2.MFC2(25) == 0x2000, "NCS sf=0: MAC1 unshifted");
+
+    // lm=1 clamps negative IR to 0
+    cop2.reset();
+    cop2.CTC2(8, 0x0000f000); // L11 low half 0xf000 = -4096
+    cop2.CTC2(16, 0x1000);
+    cop2.MTC2(0, pack(0x1000, 0));
+    {
+        const uw code = 0x1e | (1 << 19) | (1 << 10); // sf=1 lm=1
+        cop2.execute(code);
+    }
+    check(cop2.MFC2(9) == 0, "NCS lm=1: negative IR1 clamped");
 
     // --- LZCS / LZCR leading bit count -----------------------------------
     cop2.MTC2(30, 1);
