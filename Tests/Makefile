@@ -14,7 +14,8 @@ CXX      ?= g++
 CXXFLAGS += -std=gnu++17 -Wall -O2 -DDREAMCAST -D__KOS__ \
             -I$(DC_DIR)/HostCheck -I$(SOURCE_DIR) -Wno-changes-meaning
 
-TESTS := gte-test cpu-test disc-test gpu-test memcard-test xa-test mdec-test texwindow-test
+TESTS := gte-test cpu-test disc-test gpu-test memcard-test xa-test mdec-test \
+         texwindow-test counters-test
 
 all: $(TESTS)
 
@@ -50,6 +51,10 @@ texwindow-test: TexWindow.cc $(DC_DIR)/HostCheck/Stubs.cc \
                 $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
+counters-test: Counters.cc $(DC_DIR)/HostCheck/Stubs.cc \
+               $(addprefix $(SOURCE_DIR)/,$(addsuffix .cc,$(CORE_SRCS)))
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
 run: $(TESTS)
 	./gte-test
 	./cpu-test
@@ -59,6 +64,7 @@ run: $(TESTS)
 	./xa-test
 	./mdec-test
 	./texwindow-test
+	./counters-test
 
 clean:
 	-rm -f $(TESTS)
