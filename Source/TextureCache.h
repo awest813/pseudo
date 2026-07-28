@@ -16,7 +16,7 @@ class CstrTextureCache {
     
     struct { // Mem position of texture and color lookup table
         GLuint tex;
-        uw uid, w, h, color;
+        uw uid, w, h, color, texWin;
         bool update;
     } cache[TCACHE_MAX];
     

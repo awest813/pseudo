@@ -79,10 +79,11 @@ class CstrDraw {
         sh h, v;
     } res, offset;
     
-    // Texture Window
+    // Texture Window (GP0 E2): Mask/Offset in 8-pixel steps
     struct {
-        sh startX, endX;
-        sh startY, endY;
+        ub maskX, maskY;     // raw 5-bit fields
+        ub offsetX, offsetY; // raw 5-bit fields
+        uw raw;
     } texWindow;
 
     // Draw Area, in VRAM coordinates (used for scissor-based clipping)
@@ -123,6 +124,10 @@ public:
     void primitive(uw, uw *);
     void outputVRAM(uw *, sh, sh, sh, sh, bool);
     void updateVRAMView();
+    void setTexWindow(uw data);
+    ub mapTexU(ub u) const;
+    ub mapTexV(ub v) const;
+    uw texWindowRaw() const { return texWindow.raw; }
 };
 
 extern CstrDraw draw;

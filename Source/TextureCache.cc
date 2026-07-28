@@ -36,9 +36,10 @@ void CstrTextureCache::createTexture(GLuint *tex, int w, int h) {
 
 void CstrTextureCache::fetchTexture(CstrDraw::TextureState info, uw clut) {
     uw uid = (clut << 16) | info.tp;
+    const uw texWin = draw.texWindowRaw();
     
     for (auto &tc : cache) {
-        if (tc.uid == uid && tc.w == info.w && tc.h == info.h) {
+        if (tc.uid == uid && tc.w == info.w && tc.h == info.h && tc.texWin == texWin) {
             if (tc.color != info.color || tc.update == true) {
                 tc.uid = 0;
                 tc.w   = 0;
@@ -57,6 +58,7 @@ void CstrTextureCache::fetchTexture(CstrDraw::TextureState info, uw clut) {
     tc.w      = info.w;
     tc.h      = info.h;
     tc.color  = info.color;
+    tc.texWin = texWin;
     tc.update = false;
     
     // Reset
@@ -71,12 +73,21 @@ void CstrTextureCache::fetchTexture(CstrDraw::TextureState info, uw clut) {
             }
             
             for (int h = 0; h < 256; h++) {
+                const int vh = tc.h + draw.mapTexV((ub)h);
                 for (int w = 0; w < (256 / 4); w++) {
-                    const uh p = vs.vram.ptr[(tc.h + h) * FRAME_W + tc.w + w];
-                    tex.bfr[h][w*4 + 0] = tex.cc[(p >> 0x0) & 15];
-                    tex.bfr[h][w*4 + 1] = tex.cc[(p >> 0x4) & 15];
-                    tex.bfr[h][w*4 + 2] = tex.cc[(p >> 0x8) & 15];
-                    tex.bfr[h][w*4 + 3] = tex.cc[(p >> 0xc) & 15];
+                    // Four 4-bit texels share one VRAM halfword; map each
+                    // logical U through the texture window independently.
+                    uw pix[4];
+                    for (int n = 0; n < 4; n++) {
+                        const ub u = draw.mapTexU((ub)(w * 4 + n));
+                        const uh p = vs.vram.ptr[vh * FRAME_W + tc.w + (u >> 2)];
+                        const int shift = (u & 3) * 4;
+                        pix[n] = tex.cc[(p >> shift) & 15];
+                    }
+                    tex.bfr[h][w*4 + 0] = pix[0];
+                    tex.bfr[h][w*4 + 1] = pix[1];
+                    tex.bfr[h][w*4 + 2] = pix[2];
+                    tex.bfr[h][w*4 + 3] = pix[3];
                 }
             }
             break;
@@ -88,10 +99,16 @@ void CstrTextureCache::fetchTexture(CstrDraw::TextureState info, uw clut) {
             }
             
             for (int h = 0; h < 256; h++) {
+                const int vh = tc.h + draw.mapTexV((ub)h);
                 for (int w = 0; w < (256 / 2); w++) {
-                    const uh p = vs.vram.ptr[(tc.h + h) * FRAME_W + tc.w + w];
-                    tex.bfr[h][w*2 + 0] = tex.cc[(p >> 0) & 255];
-                    tex.bfr[h][w*2 + 1] = tex.cc[(p >> 8) & 255];
+                    uw pix[2];
+                    for (int n = 0; n < 2; n++) {
+                        const ub u = draw.mapTexU((ub)(w * 2 + n));
+                        const uh p = vs.vram.ptr[vh * FRAME_W + tc.w + (u >> 1)];
+                        pix[n] = tex.cc[(u & 1) ? ((p >> 8) & 255) : (p & 255)];
+                    }
+                    tex.bfr[h][w*2 + 0] = pix[0];
+                    tex.bfr[h][w*2 + 1] = pix[1];
                 }
             }
             break;
@@ -99,8 +116,10 @@ void CstrTextureCache::fetchTexture(CstrDraw::TextureState info, uw clut) {
         case TEX_15BIT:   // No color palette
         case TEX_15BIT_2: // Seen on some rare cases
             for (int h = 0; h < 256; h++) {
+                const int vh = tc.h + draw.mapTexV((ub)h);
                 for (int w = 0; w < 256; w++) {
-                    const uh p = vs.vram.ptr[(tc.h + h) * FRAME_W + tc.w + w];
+                    const ub u = draw.mapTexU((ub)w);
+                    const uh p = vs.vram.ptr[vh * FRAME_W + tc.w + u];
                     tex.bfr[h][w] = pixel2texel(p);
                 }
             }

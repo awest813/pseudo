@@ -46,12 +46,36 @@ void CstrDraw::reset() {
     res      = { 0 };
     offset   = { 0 };
     drawArea = { 0, 0, FRAME_W - 1, FRAME_H - 1 };
+    setTexWindow(0);
 
     opaqueClipState(true);
     
     // Redraw
     resize(window.h, window.v);
     swapBuffers();
+}
+
+void CstrDraw::setTexWindow(uw data) {
+    texWindow.maskX   = (data >>  0) & 0x1f;
+    texWindow.maskY   = (data >>  5) & 0x1f;
+    texWindow.offsetX = (data >> 10) & 0x1f;
+    texWindow.offsetY = (data >> 15) & 0x1f;
+    texWindow.raw     = data & 0xfffff;
+    vs.info[vs.GPU_INFO_TEX_WINDOW] = texWindow.raw;
+    tcache.invalidate(0, 0, FRAME_W, FRAME_H);
+}
+
+ub CstrDraw::mapTexU(ub u) const {
+    // Texcoord = (Texcoord AND NOT(Mask*8)) OR ((Offset AND Mask)*8)
+    const ub mask = (ub)(texWindow.maskX << 3);
+    const ub off  = (ub)((texWindow.offsetX & texWindow.maskX) << 3);
+    return (ub)((u & (ub)~mask) | off);
+}
+
+ub CstrDraw::mapTexV(ub v) const {
+    const ub mask = (ub)(texWindow.maskY << 3);
+    const ub off  = (ub)((texWindow.offsetY & texWindow.maskY) << 3);
+    return (ub)((v & (ub)~mask) | off);
 }
 
 void CstrDraw::swapBuffers() {
@@ -388,15 +412,11 @@ void CstrDraw::primitive(uw addr, uw *packets) {
                     pos.txw = size;
                     pos.txh = size;
                 }
-                else { // Freeform & Texture Window
+                else { // Freeform size
                     pos.vxw = sz[0]->w;
                     pos.vxh = sz[0]->h;
-                    
-                    //tex[0]->u += texWindow.startX;
-                    //tex[0]->v += texWindow.startY;
-                    
-                    pos.txw = pos.vxw;//MIN(texWindow.endX, pos.vxw);
-                    pos.txh = pos.vxh;//MIN(texWindow.endY, pos.vxh);
+                    pos.txw = pos.vxw;
+                    pos.txh = pos.vxh;
                 }
                 
                 if (setup->textured) {
@@ -454,11 +474,7 @@ void CstrDraw::primitive(uw addr, uw *packets) {
                     return;
                     
                 case 0xe2: // Texture Window
-                    texWindow.startX = ((packets[0] >> 10) & 0x1f) << 3;
-                    texWindow.startY = ((packets[0] >> 15) & 0x1f) << 3;
-                    texWindow.  endX = 256 - (((packets[0] >> 0) & 0x1f) << 3);
-                    texWindow.  endY = 256 - (((packets[0] >> 5) & 0x1f) << 3);
-                    vs.info[vs.GPU_INFO_TEX_WINDOW] = packets[0] & 0xfffff;
+                    setTexWindow(packets[0]);
                     return;
                     
                 case 0xe3: // Draw Area Start
