@@ -236,14 +236,14 @@ static void drawBackdrop(int frame) {
     }
 
     drawFill(0, 0, DC_SCREEN_W, 118, COL_INK_R, COL_INK_G, COL_INK_B, 180);
-    drawFill(40, 108, 200, 110, COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, 255);
+    drawFill(40, 108, 280, 110, COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, 255);
 }
 
 static void drawBrand(int frame, ub alpha) {
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, fontTex);
     glColor4ub(COL_BRAND_R, COL_BRAND_G, COL_BRAND_B, alpha);
-    drawTextScaled(40, 28, 2.0f, "PSeudo");
+    drawTextScaled(40, 28, 2.0f, "pseudoXDC");
     (void)frame;
 }
 

@@ -1,17 +1,11 @@
-Files in this directory are baked into the KOS romdisk and appear under
-/rd at runtime.
+pseudoXDC / psxdc — Dreamcast PSX emulator port
+================================================
 
-PSeudo detects media by content, not by file name, scanning /rd first
-and the GD-ROM (/cd) second:
+Put these files here (same folder as this README) before `make`:
 
-  - PS1 BIOS   any 512KB dump, e.g. SCPH1001.BIN (not distributed)
-  - Game       a raw disc image (2352 bytes/sector .bin/.img), or a
-               .cue sheet pointing at one
-  - Homebrew   a PS-X EXE file
+  scph1001.bin     — required BIOS (or scph5501.bin / scph7001.bin)
+  game.bin         — optional default disc if you skip the menu picker
 
-With a single game found it boots straight away; with several, a boot
-menu lets you pick. Without any, the emulator boots into the BIOS
-shell; without a BIOS it exits.
+Or copy discs onto the SD card / PC Files and pick them from the boot menu.
 
-Note the romdisk is loaded into RAM whole, so prefer the GD-ROM for
-full-size game images.
+See Platforms/Dreamcast/README.md for goals, progress, and full build notes.

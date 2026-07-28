@@ -221,7 +221,7 @@ static int scanMedia(const char *dir, char *bios, MediaEntry *games, int count) 
                 break;
 
             case MEDIA_ECM:
-                printf("PSeudo: Skipping ECM image (decompress to .bin/.img first): %s\n", path);
+                printf("pseudoXDC: Skipping ECM image (decompress to .bin/.img first): %s\n", path);
                 break;
 
             default:
@@ -261,7 +261,7 @@ int main(int argc, char **argv) {
         menuFatal("BIOS not found",
                   "Place a 512KB dump on /rd or /cd",
                   "Example: SCPH1001.BIN");
-        printf("PSeudo: BIOS not found. Place a 512KB BIOS dump (e.g. SCPH1001.BIN)\n");
+        printf("pseudoXDC: BIOS not found. Place a 512KB BIOS dump (e.g. SCPH1001.BIN)\n");
         printf("        on the romdisk or GD-ROM.\n");
         return 1;
     }
@@ -284,7 +284,7 @@ int main(int argc, char **argv) {
         }
     }
     else {
-        printf("PSeudo: No game selected. Running BIOS shell.\n");
+        printf("pseudoXDC: No game selected. Running BIOS shell.\n");
     }
 
     // Launch the CPU and audio threads
@@ -305,7 +305,7 @@ int main(int argc, char **argv) {
     thd_join(t_cpu,   NULL);
     thd_join(t_audio, NULL);
 #else
-    printf("PSeudo Dreamcast port (host build)\n");
+    printf("pseudoXDC (psxdc) — Dreamcast host build\n");
     printf("Build with the KOS toolchain targeting Dreamcast hardware.\n");
 #endif // __KOS__
 
