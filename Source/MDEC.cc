@@ -22,14 +22,14 @@ CstrMotionDecoder mdec;
 static sw iq_y[64], iq_uv[64];
 
 void CstrMotionDecoder::updateStatus() {
-    status = STAT_FIFO_EMPTY;
+    status = MDEC_STAT_FIFO_EMPTY;
     status |= ((cmd >> 25) & 0x0f) << 23; // depth/signed/bit15 mirror
-    status |= (4 << STAT_BLOCK_SHIFT);    // idle block = Cr
+    status |= (4 << MDEC_STAT_BLOCK_SHIFT);    // idle block = Cr
 
     if (busy) {
-        status |= STAT_BUSY;
-        status &= ~STAT_FIFO_EMPTY;
-        status |= STAT_FIFO_FULL;
+        status |= MDEC_STAT_BUSY;
+        status &= ~MDEC_STAT_FIFO_EMPTY;
+        status |= MDEC_STAT_FIFO_FULL;
     }
 
     if (paramWords) {
@@ -40,22 +40,17 @@ void CstrMotionDecoder::updateStatus() {
     }
 
     if (dinEnable && busy && paramWords) {
-        status |= STAT_DIN_REQ;
+        status |= MDEC_STAT_DIN_REQ;
     }
 
     if (doutEnable && outReady) {
-        status |= STAT_DOUT_REQ;
-        status &= ~STAT_FIFO_EMPTY;
+        status |= MDEC_STAT_DOUT_REQ;
+        status &= ~MDEC_STAT_FIFO_EMPTY;
     }
 }
 
 void CstrMotionDecoder::setParamWords(uw words) {
     paramWords = words;
-}
-
-void CstrMotionDecoder::reflectCmdBits(uw data) {
-    // Bits 28-25 of the command are mirrored into status 26-23.
-    cmd = (cmd & ~0x1e000000) | (data & 0x1e000000);
 }
 
 void CstrMotionDecoder::reset() {
@@ -66,7 +61,7 @@ void CstrMotionDecoder::reset() {
     paramWords = 0;
     len = 0;
     bit15 = 0;
-    status = STAT_RESET_VALUE;
+    status = MDEC_STAT_RESET_VALUE;
 
     for (sw k=0; k<256; k++) {
         rtbl[k+0x000] = 0;
@@ -79,24 +74,23 @@ void CstrMotionDecoder::write(uw addr, uw data) {
     switch(addr & 0xf) {
         case 0: {
             cmd = data;
-            reflectCmdBits(data);
             bit15 = (data & 0x02000000) ? 0x8000 : 0;
 
-            const uw opcode = data & CMD_MASK;
+            const uw opcode = data & MDEC_CMD_MASK;
 
-            if (opcode == CMD_DECODE) {
+            if (opcode == MDEC_CMD_DECODE) {
                 len = data & 0xffff;
                 setParamWords(len);
                 busy = true;
                 outReady = false;
             }
-            else if (opcode == CMD_QUANT) {
+            else if (opcode == MDEC_CMD_QUANT) {
                 // 64 bytes luminance, optional +64 bytes chrominance
                 setParamWords((data & 1) ? 32 : 16);
                 busy = true;
                 outReady = false;
             }
-            else if (opcode == CMD_SCALE) {
+            else if (opcode == MDEC_CMD_SCALE) {
                 // 64 signed halfwords = 32 words
                 setParamWords(32);
                 busy = true;
@@ -117,13 +111,13 @@ void CstrMotionDecoder::write(uw addr, uw data) {
         }
 
         case 4:
-            if (data & CTRL_RESET) {
+            if (data & MDEC_CTRL_RESET) {
                 reset();
                 return;
             }
 
-            dinEnable  = (data & CTRL_DIN_ENABLE)  != 0;
-            doutEnable = (data & CTRL_DOUT_ENABLE) != 0;
+            dinEnable  = (data & MDEC_CTRL_DIN_ENABLE)  != 0;
+            doutEnable = (data & MDEC_CTRL_DOUT_ENABLE) != 0;
             updateStatus();
             return;
     }
@@ -366,19 +360,19 @@ void CstrMotionDecoder::executeDMA(CstrBus::castDMA *dma) {
 
         case 0x201: // DMA0 in — quant / scale / bitstream
         {
-            const uw opcode = cmd & CMD_MASK;
+            const uw opcode = cmd & MDEC_CMD_MASK;
             const uw consumed = (uw)z;
 
-            if (opcode == CMD_QUANT) {
+            if (opcode == MDEC_CMD_QUANT) {
                 TabInit(iq_y, p);
                 if (cmd & 1) {
                     TabInit(iq_uv, p + 64);
                 }
             }
-            else if (opcode == CMD_SCALE) {
+            else if (opcode == MDEC_CMD_SCALE) {
                 // Scale table accepted; fast IDCT uses the built-in AAN table.
             }
-            else if (opcode == CMD_DECODE) {
+            else if (opcode == MDEC_CMD_DECODE) {
                 rl = (uh *)p;
                 outReady = true;
             }

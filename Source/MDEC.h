@@ -1,25 +1,21 @@
 class CstrMotionDecoder {
     enum {
-        STAT_FIFO_EMPTY   = 0x80000000,
-        STAT_FIFO_FULL    = 0x40000000,
-        STAT_BUSY         = 0x20000000,
-        STAT_DIN_REQ      = 0x10000000,
-        STAT_DOUT_REQ     = 0x08000000,
-        STAT_DEPTH_SHIFT  = 25,
-        STAT_SIGNED       = 0x01000000,
-        STAT_BIT15        = 0x00800000,
-        STAT_BLOCK_SHIFT  = 16,
-        STAT_RESET_VALUE  = 0x80040000,
+        MDEC_STAT_FIFO_EMPTY   = 0x80000000,
+        MDEC_STAT_FIFO_FULL    = 0x40000000,
+        MDEC_STAT_BUSY         = 0x20000000,
+        MDEC_STAT_DIN_REQ      = 0x10000000,
+        MDEC_STAT_DOUT_REQ     = 0x08000000,
+        MDEC_STAT_BLOCK_SHIFT  = 16,
+        MDEC_STAT_RESET_VALUE  = 0x80040000,
 
-        CTRL_RESET        = 0x80000000,
-        CTRL_DIN_ENABLE   = 0x40000000,
-        CTRL_DOUT_ENABLE  = 0x20000000,
+        MDEC_CTRL_RESET        = 0x80000000,
+        MDEC_CTRL_DIN_ENABLE   = 0x40000000,
+        MDEC_CTRL_DOUT_ENABLE  = 0x20000000,
 
-        CMD_MASK          = 0xe0000000,
-        CMD_NOP           = 0x00000000,
-        CMD_DECODE        = 0x20000000,
-        CMD_QUANT         = 0x40000000,
-        CMD_SCALE         = 0x60000000,
+        MDEC_CMD_MASK          = 0xe0000000,
+        MDEC_CMD_DECODE        = 0x20000000,
+        MDEC_CMD_QUANT         = 0x40000000,
+        MDEC_CMD_SCALE         = 0x60000000,
     };
 
     void MacroBlock(sw *, sw, sw);
@@ -30,7 +26,6 @@ class CstrMotionDecoder {
     void Yuv24(sw *, ub *);
     void updateStatus();
     void setParamWords(uw words);
-    void reflectCmdBits(uw data);
 
     const sw zscan[64] = {
         0x00, 0x01, 0x08, 0x10, 0x09, 0x02, 0x03, 0x0a,
