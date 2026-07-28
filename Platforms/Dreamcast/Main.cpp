@@ -258,6 +258,9 @@ int main(int argc, char **argv) {
     gameCount = scanMedia("/cd", biosPath, games, gameCount);
 
     if (!biosPath[0]) {
+        menuFatal("BIOS not found",
+                  "Place a 512KB dump on /rd or /cd",
+                  "Example: SCPH1001.BIN");
         printf("PSeudo: BIOS not found. Place a 512KB BIOS dump (e.g. SCPH1001.BIN)\n");
         printf("        on the romdisk or GD-ROM.\n");
         return 1;

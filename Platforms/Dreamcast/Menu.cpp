@@ -22,8 +22,12 @@
 #define ATLAS_W 256
 #define ATLAS_H 256
 
-#define MENU_VISIBLE  10
-#define MENU_TIMEOUT (10 * 60) // frames without a controller before auto-boot
+#define MENU_VISIBLE     9
+#define MENU_TIMEOUT     (10 * 60) // frames without a controller before auto-boot
+#define MENU_REPEAT_DELAY 18       // frames before key-repeat starts
+#define MENU_REPEAT_RATE  5        // frames between repeats
+#define MENU_CONFIRM_FRAMES 28     // brief confirm flash before leaving
+#define MENU_LABEL_MAX   36        // visible filename chars before ellipsis
 
 // Visual direction: deep ink + warm amber (not purple / cream / glow stacks)
 #define COL_INK_R     10
@@ -90,6 +94,15 @@ static void menuInitFont(void) {
     delete[] atlas;
 }
 
+static void menuSetup2D(void) {
+    glViewport(0, 0, DC_SCREEN_W, DC_SCREEN_H);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0, DC_SCREEN_W, DC_SCREEN_H, 0, -1, 1);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+}
+
 static void drawFill(float x0, float y0, float x1, float y1,
                      ub r, ub g, ub b, ub a) {
     glColor4ub(r, g, b, a);
@@ -132,6 +145,33 @@ static void drawText(int x, int y, const char *s) {
     drawTextScaled((float)x, (float)y, 1.0f, s);
 }
 
+static int textWidth(const char *s, float scale) {
+    int n = 0;
+    for (; *s; s++) {
+        n++;
+    }
+    return (int)(n * FONT_CW * scale);
+}
+
+static void truncateLabel(char *dst, size_t dstSize, const char *src, int maxChars) {
+    if (maxChars < 4) {
+        maxChars = 4;
+    }
+    size_t len = strlen(src);
+    if (len <= (size_t)maxChars) {
+        snprintf(dst, dstSize, "%s", src);
+        return;
+    }
+    // Keep head, ellipsis, short tail so disc revisions stay recognizable
+    int head = maxChars - 4;
+    int tail = 3;
+    if (head < 1) {
+        head = 1;
+        tail = maxChars - 2;
+    }
+    snprintf(dst, dstSize, "%.*s...%s", head, src, src + len - tail);
+}
+
 static const char *baseName(const char *path) {
     const char *slash = strrchr(path, '/');
     return slash ? slash + 1 : path;
@@ -166,7 +206,6 @@ static const char *mediaKindLabel(MediaKind kind) {
 }
 
 static void drawBackdrop(int frame) {
-    // Slow teal breathe in the lower half — atmosphere without glow spam
     const float breathe = 0.5f + 0.5f * sinf(frame * 0.012f);
     const int tealLift = (int)(6.0f * breathe);
 
@@ -182,27 +221,127 @@ static void drawBackdrop(int frame) {
         drawFill(0, y0, DC_SCREEN_W, y1, r, g, b, 255);
     }
 
-    // Quiet brand plane behind the title — not a card, just a soft field
+    // Slow diagonal wash — one atmospheric plane, not a collage
+    {
+        float shift = fmodf(frame * 0.35f, (float)DC_SCREEN_W);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glColor4ub(COL_TEAL_R + 8, COL_TEAL_G + 10, COL_TEAL_B + 6, 28);
+        glBegin(GL_QUADS);
+        glVertex2f(-80 + shift, 0);
+        glVertex2f(40 + shift, 0);
+        glVertex2f(DC_SCREEN_W + 80 + shift, DC_SCREEN_H);
+        glVertex2f(DC_SCREEN_W - 40 + shift, DC_SCREEN_H);
+        glEnd();
+    }
+
     drawFill(0, 0, DC_SCREEN_W, 118, COL_INK_R, COL_INK_G, COL_INK_B, 180);
-    // Thin amber rule under the brand block
     drawFill(40, 108, 200, 110, COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, 255);
+}
+
+static void drawBrand(int frame, ub alpha) {
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, fontTex);
+    glColor4ub(COL_BRAND_R, COL_BRAND_G, COL_BRAND_B, alpha);
+    drawTextScaled(40, 28, 2.0f, "PSeudo");
+    (void)frame;
+}
+
+// Edge-triggered + hold-repeat for D-pad axes. `held` is the current mask
+// for the axis group; returns the bits that should fire this frame.
+static uw navRepeat(uw held, uw *prevHeld, int *timer) {
+    const uw axes = CONT_DPAD_UP | CONT_DPAD_DOWN | CONT_DPAD_LEFT | CONT_DPAD_RIGHT;
+    uw cur = held & axes;
+    uw pressed = cur & ~(*prevHeld);
+
+    if (cur == 0) {
+        *timer = 0;
+        *prevHeld = cur;
+        return 0;
+    }
+
+    if (pressed) {
+        *timer = MENU_REPEAT_DELAY;
+        *prevHeld = cur;
+        return pressed;
+    }
+
+    if (*timer > 0) {
+        (*timer)--;
+        *prevHeld = cur;
+        return 0;
+    }
+
+    *timer = MENU_REPEAT_RATE;
+    *prevHeld = cur;
+    return cur; // repeat the held direction(s)
+}
+
+void menuFatal(const char *title, const char *line1, const char *line2) {
+    menuInitFont();
+    menuSetup2D();
+
+    int frame = 0;
+    uw prev = (uw)-1;
+    const int timeout = 12 * 60;
+
+    for (;;) {
+        frame++;
+        uw cur = menuButtons();
+        if (cur == (uw)-1) {
+            cur = 0;
+            if (frame > timeout) {
+                return;
+            }
+        }
+
+        uw pressed = prev == (uw)-1 ? 0 : (cur & ~prev);
+        prev = cur;
+        if (pressed & (CONT_A | CONT_START | CONT_B)) {
+            return;
+        }
+
+        glClearColor(COL_INK_R / 255.0f, COL_INK_G / 255.0f, COL_INK_B / 255.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        drawBackdrop(frame);
+
+        ub a = frame < 30 ? (ub)((frame * 255) / 30) : 255;
+        drawBrand(frame, a);
+
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, fontTex);
+        glColor4ub(COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, a);
+        drawText(40, 140, title);
+        glColor4ub(COL_ROW_R, COL_ROW_G, COL_ROW_B, a);
+        if (line1) drawText(40, 190, line1);
+        if (line2) drawText(40, 222, line2);
+
+        glColor4ub(COL_MUTED_R, COL_MUTED_G, COL_MUTED_B, a);
+        drawText(40, 444, "A / Start continue");
+
+        glDisable(GL_TEXTURE_2D);
+        glDisable(GL_BLEND);
+        glKosSwapBuffers();
+    }
 }
 
 int menuPickGame(const MediaEntry *items, int count) {
     menuInitFont();
+    menuSetup2D();
 
     const int total = count + 1; // trailing "Start BIOS"
     int sel = 0;
     int idleFrames = 0;
     int frame = 0;
-    uw prev = (uw)-1; // Swallow buttons already held on entry
-
-    glViewport(0, 0, DC_SCREEN_W, DC_SCREEN_H);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glOrtho(0, DC_SCREEN_W, DC_SCREEN_H, 0, -1, 1);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    int confirmLeft = 0;
+    int result = -2; // pending until confirm flash finishes
+    int repeatTimer = 0;
+    uw prev = (uw)-1;
+    uw prevNav = 0;
+    float scroll = 0.0f; // smooth window start
 
     for (;;) {
         frame++;
@@ -211,7 +350,7 @@ int menuPickGame(const MediaEntry *items, int count) {
         uw cur = menuButtons();
         bool noPad = (cur == (uw)-1);
         if (noPad) {
-            if (++idleFrames > MENU_TIMEOUT) {
+            if (confirmLeft <= 0 && ++idleFrames > MENU_TIMEOUT) {
                 return count ? 0 : -1;
             }
             cur = prev == (uw)-1 ? 0 : prev;
@@ -223,16 +362,31 @@ int menuPickGame(const MediaEntry *items, int count) {
         uw pressed = prev == (uw)-1 ? 0 : (cur & ~prev);
         prev = cur;
 
-        if (pressed & CONT_DPAD_UP)   sel = (sel + total - 1) % total;
-        if (pressed & CONT_DPAD_DOWN) sel = (sel + 1) % total;
-        if (pressed & CONT_DPAD_LEFT)  sel = (sel + total - MENU_VISIBLE) % total;
-        if (pressed & CONT_DPAD_RIGHT) sel = (sel + MENU_VISIBLE) % total;
-        if (pressed & (CONT_A | CONT_START)) {
-            return sel < count ? sel : -1;
+        if (confirmLeft <= 0) {
+            uw nav = navRepeat(cur, &prevNav, &repeatTimer);
+            if (nav & CONT_DPAD_UP)   sel = (sel + total - 1) % total;
+            if (nav & CONT_DPAD_DOWN) sel = (sel + 1) % total;
+            if (nav & CONT_DPAD_LEFT)  sel = (sel + total - MENU_VISIBLE) % total;
+            if (nav & CONT_DPAD_RIGHT) sel = (sel + MENU_VISIBLE) % total;
+
+            if (pressed & (CONT_A | CONT_START)) {
+                result = sel < count ? sel : -1;
+                confirmLeft = MENU_CONFIRM_FRAMES;
+            }
+            if (pressed & CONT_B) {
+                result = -1;
+                confirmLeft = MENU_CONFIRM_FRAMES;
+            }
         }
-        if (pressed & CONT_B) {
-            return -1;
+        else if (--confirmLeft <= 0) {
+            return result;
         }
+
+        // Smooth scroll toward a window that keeps `sel` centered
+        float target = (float)(sel - MENU_VISIBLE / 2);
+        if (target > total - MENU_VISIBLE) target = (float)(total - MENU_VISIBLE);
+        if (target < 0) target = 0;
+        scroll += (target - scroll) * 0.22f;
 
         // --- Render ----------------------------------------------------
         glClearColor(COL_INK_R / 255.0f, COL_INK_G / 255.0f, COL_INK_B / 255.0f, 1.0f);
@@ -243,38 +397,50 @@ int menuPickGame(const MediaEntry *items, int count) {
 
         drawBackdrop(frame);
 
-        // Intro fade for brand (first ~40 frames)
         ub brandA = 255;
         if (frame < 40) {
             brandA = (ub)((frame * 255) / 40);
         }
+        drawBrand(frame, brandA);
 
         glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, fontTex);
-
-        glColor4ub(COL_BRAND_R, COL_BRAND_G, COL_BRAND_B, brandA);
-        drawTextScaled(40, 28, 2.0f, "PSeudo");
-
         glColor4ub(COL_MUTED_R, COL_MUTED_G, COL_MUTED_B, brandA);
         drawText(40, 82, "Choose something to boot");
 
-        // Keep the selection inside the visible window
-        int first = sel - MENU_VISIBLE / 2;
-        if (first > total - MENU_VISIBLE) first = total - MENU_VISIBLE;
-        if (first < 0) first = 0;
-
         const float pulse = 0.55f + 0.45f * sinf(frame * 0.09f);
         const int railA = (int)(140 + 100 * pulse);
+        const int listTop = 128;
+        const int rowPitch = FONT_CH + 10;
 
-        for (int row = 0; row < MENU_VISIBLE && first + row < total; row++) {
+        // Scroll affordances
+        glDisable(GL_TEXTURE_2D);
+        if (scroll > 0.4f) {
+            drawFill(310, listTop - 14, 330, listTop - 10,
+                     COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, (ub)(120 + 80 * pulse));
+        }
+        if (scroll + MENU_VISIBLE < total - 0.4f) {
+            float y = listTop + MENU_VISIBLE * rowPitch + 4;
+            drawFill(310, y, 330, y + 4,
+                     COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, (ub)(120 + 80 * pulse));
+        }
+
+        int first = (int)(scroll + 0.001f);
+        float yBias = (scroll - first) * rowPitch;
+
+        for (int row = 0; row <= MENU_VISIBLE && first + row < total; row++) {
             int i = first + row;
-            int y = 128 + row * (FONT_CH + 8);
+            float y = listTop + row * rowPitch - yBias;
+
+            if (y < listTop - rowPitch || y > listTop + MENU_VISIBLE * rowPitch) {
+                continue;
+            }
 
             char kind[8];
             char label[MEDIA_PATH_MAX];
             if (i < count) {
                 snprintf(kind, sizeof(kind), "%s", mediaKindLabel(items[i].kind));
-                snprintf(label, sizeof(label), "%s", baseName(items[i].path));
+                truncateLabel(label, sizeof(label), baseName(items[i].path), MENU_LABEL_MAX);
             }
             else {
                 snprintf(kind, sizeof(kind), "BIOS");
@@ -282,15 +448,19 @@ int menuPickGame(const MediaEntry *items, int count) {
             }
 
             const bool on = (i == sel);
+            const bool confirming = on && confirmLeft > 0;
             float xOff = on ? (3.0f + 2.0f * sinf(frame * 0.11f)) : 0.0f;
 
             glDisable(GL_TEXTURE_2D);
             if (on) {
-                // Selection rail — one accent mark, not a card chrome stack
-                drawFill(40, (float)y, 44, (float)(y + FONT_CH),
+                ub wash = confirming ? (ub)(90 + 80 * pulse) : 70;
+                drawFill(40, y, 44, y + FONT_CH,
                          COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, (ub)railA);
-                drawFill(48, (float)y - 2, DC_SCREEN_W - 40, (float)(y + FONT_CH + 2),
-                         COL_TEAL_R, COL_TEAL_G, COL_TEAL_B, 70);
+                drawFill(48, y - 2, DC_SCREEN_W - 40, y + FONT_CH + 2,
+                         confirming ? COL_ACCENT_R : COL_TEAL_R,
+                         confirming ? COL_ACCENT_G : COL_TEAL_G,
+                         confirming ? (ub)(COL_ACCENT_B / 2) : COL_TEAL_B,
+                         wash);
             }
             glEnable(GL_TEXTURE_2D);
             glBindTexture(GL_TEXTURE_2D, fontTex);
@@ -299,9 +469,9 @@ int menuPickGame(const MediaEntry *items, int count) {
                 glColor4ub(COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, 255);
             }
             else {
-                glColor4ub(COL_MUTED_R, COL_MUTED_G, COL_MUTED_B, 255);
+                glColor4ub(COL_MUTED_R, COL_MUTED_G, COL_MUTED_B, 220);
             }
-            drawTextScaled(56 + xOff, (float)y, 1.0f, kind);
+            drawTextScaled(56 + xOff, y, 1.0f, kind);
 
             if (on) {
                 glColor4ub(COL_BRAND_R, COL_BRAND_G, COL_BRAND_B, 255);
@@ -309,10 +479,20 @@ int menuPickGame(const MediaEntry *items, int count) {
             else {
                 glColor4ub(COL_ROW_R, COL_ROW_G, COL_ROW_B, 255);
             }
-            drawTextScaled(120 + xOff, (float)y, 1.0f, label);
+            drawTextScaled(120 + xOff, y, 1.0f, label);
         }
 
-        // Footer: one job — controls / timeout
+        // Confirm caption
+        if (confirmLeft > 0) {
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, fontTex);
+            glColor4ub(COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, 255);
+            const char *msg = (result < 0) ? "Opening BIOS..." : "Booting...";
+            int w = textWidth(msg, 1.0f);
+            drawText((DC_SCREEN_W - w) / 2, 400, msg);
+        }
+
+        // Footer
         glDisable(GL_TEXTURE_2D);
         drawFill(0, 430, DC_SCREEN_W, DC_SCREEN_H, COL_INK_R, COL_INK_G, COL_INK_B, 210);
 
@@ -320,7 +500,7 @@ int menuPickGame(const MediaEntry *items, int count) {
         glBindTexture(GL_TEXTURE_2D, fontTex);
         glColor4ub(COL_MUTED_R, COL_MUTED_G, COL_MUTED_B, 255);
 
-        if (noPad) {
+        if (noPad && confirmLeft <= 0) {
             char wait[64];
             int left = (MENU_TIMEOUT - idleFrames + 59) / 60;
             if (left < 0) left = 0;
@@ -333,8 +513,8 @@ int menuPickGame(const MediaEntry *items, int count) {
             drawFill(40, 472, 40 + progress * (DC_SCREEN_W - 80), 476,
                      COL_ACCENT_R, COL_ACCENT_G, COL_ACCENT_B, 220);
         }
-        else {
-            drawText(40, 444, "D-pad move   A / Start boot   B BIOS");
+        else if (confirmLeft <= 0) {
+            drawText(40, 444, "Hold D-pad to scroll   A / Start boot   B BIOS");
         }
 
         glDisable(GL_TEXTURE_2D);

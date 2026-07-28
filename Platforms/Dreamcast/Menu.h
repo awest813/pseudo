@@ -26,6 +26,10 @@ struct MediaEntry {
 // the chosen entry, or -1 for the BIOS shell. With no controller
 // plugged in, the first entry is chosen after a ~10 second timeout.
 int menuPickGame(const MediaEntry *items, int count);
+
+// Full-screen fatal notice in the same visual language as the picker.
+// Blocks until Start/A or a short timeout, then returns.
+void menuFatal(const char *title, const char *line1, const char *line2);
 #endif
 
 #endif

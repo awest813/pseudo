@@ -38,8 +38,10 @@ game images.
 
 With a BIOS present the boot menu always appears, even for a single
 game (so you can still open the BIOS shell). D-pad or analog stick to
-move, **A**/**Start** to boot, **B** for the BIOS shell. Without a
-controller the first entry boots after a short countdown.
+move (hold to scroll), **A**/**Start** to boot, **B** for the BIOS
+shell. Without a controller the first entry boots after a short
+countdown. A missing BIOS shows an on-screen notice instead of only
+logging to the serial console.
 
 ## Controls
 
