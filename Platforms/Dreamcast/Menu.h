@@ -11,8 +11,9 @@ enum MediaKind {
     MEDIA_NONE,
     MEDIA_BIOS, // 512KB raw BIOS dump
     MEDIA_EXE,  // "PS-X EXE" header
-    MEDIA_DISC, // raw disc image, 2352 bytes per sector
+    MEDIA_DISC, // raw disc image, 2352 or 2048 bytes per sector
     MEDIA_CUE,  // cue sheet naming a disc image
+    MEDIA_ECM,  // Error Code Modeler compressed image (unsupported)
 };
 
 struct MediaEntry {

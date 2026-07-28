@@ -68,16 +68,17 @@ void CstrMips::bootstrap() {
 }
 
 #ifdef DREAMCAST
-// True when insn is LW from the PSX I/O register range (0x1f801000).
-static bool loadsHwReg(uw insn) {
+// True when insn is LW from a register games spin on while waiting
+// for vsync (GPU status or IRQ stat).
+static bool loadsWaitReg(uw insn) {
     if ((insn >> 26) != 35) {
         return false;
     }
 
-    const uw reg = (insn >> 21) & 31;
-    const sw off = (sw)(insn & 0xffff);
-    const uw addr = cpu.base[reg] + off;
-    return (addr & 0xffff0000) == 0x1f800000;
+    const uw rnum = (insn >> 21) & 31;
+    const sw offs = (sw)(insn & 0xffff);
+    const uw iaddr = cpu.base[rnum] + offs;
+    return iaddr == 0x1f801814 || iaddr == 0x1f801070;
 }
 #endif
 
@@ -106,7 +107,7 @@ void CstrMips::run() {
             if (pc > pcMax) {
                 pcMax = pc;
             }
-            if (loadsHwReg(insn)) {
+            if (loadsWaitReg(insn)) {
                 sawHwPoll = true;
             }
 #endif

@@ -54,6 +54,21 @@ int main() {
     check((stat & GPU_STAT_DRAWINGALLOWED) != 0, "setMask bit2 clear: DRAWINGALLOWED");
   }
 
+  {
+    vs.write(0x1f801814, 0x10000000); // info query: GPU type
+    check(vs.read(0x1f801810) == 2, "GPU info 0x00: type");
+  }
+
+  {
+    vs.write(0x1f801814, 0x10000001); // info query: unknown
+    check(vs.read(0x1f801810) == 1, "GPU info 0x01");
+  }
+
+  {
+    vs.write(0x1f801814, 0x10000007); // info query: GPU version
+    check(vs.read(0x1f801810) == 2, "GPU info 0x07: version");
+  }
+
     if (failed) {
         printf("\nFAILED (%d failures)\n", failed);
         return 1;

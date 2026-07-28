@@ -113,6 +113,9 @@ static MediaKind classify(const char *path) {
     long size = ftell(fp);
     fclose(fp);
 
+    if (got >= 4 && !memcmp(magic, "ECM\0", 4)) {
+        return MEDIA_ECM;
+    }
     if (got == sizeof(magic) && !memcmp(magic, "PS-X EXE", 8)) {
         return MEDIA_EXE;
     }
@@ -215,6 +218,10 @@ static int scanMedia(const char *dir, char *bios, MediaEntry *games, int count) 
                         count = addEntry(games, count, ref, MEDIA_DISC);
                     }
                 }
+                break;
+
+            case MEDIA_ECM:
+                printf("PSeudo: Skipping ECM image (decompress to .bin/.img first): %s\n", path);
                 break;
 
             default:

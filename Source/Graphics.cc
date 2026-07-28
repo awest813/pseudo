@@ -18,7 +18,10 @@ void CstrGraphics::reset() {
     vrop = { 0 };
     
     memset(info, 0, sizeof(info));
+    info[0] = 2; // GPU type (CXD8561Q / CXD8538BQ)
+    info[1] = 1;
     info[GPU_INFO_VERSION] = 0x2;
+    info[6] = 1;
     
     ret.data   = 0x400;
     clock      = 0;
@@ -140,16 +143,13 @@ void CstrGraphics::write(uw addr, uw data) {
                     }
                     return;
                     
-                case 0x10: // TODO: Information
+                case 0x10: // GPU information queries
                     switch(GPU_INFO(data)) {
-                        case 0x0:
-                        case 0x1:
-                        case 0x6:
                         case 0x8 ... 0xf:
                             printx("/// PSeudo GPU info: %d", GPU_INFO(data));
                             return;
                     }
-                    
+
                     ret.data = info[GPU_INFO(data)];
                     return;
                     

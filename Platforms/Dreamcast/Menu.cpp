@@ -119,6 +119,14 @@ static uw menuButtons(void) {
     return b;
 }
 
+static const char *mediaTag(MediaKind kind) {
+    switch (kind) {
+        case MEDIA_EXE:  return " [EXE]";
+        case MEDIA_DISC: return " [DISC]";
+        default:         return "";
+    }
+}
+
 int menuPickGame(const MediaEntry *items, int count) {
     menuInitFont();
 
@@ -183,7 +191,9 @@ int menuPickGame(const MediaEntry *items, int count) {
             int i = first + row;
             int y = 88 + row * (FONT_CH + 4);
 
-            const char *label = i < count ? baseName(items[i].path) : "Start BIOS";
+            const char *base = baseName(items[i].path);
+            char label[MEDIA_PATH_MAX + 12];
+            snprintf(label, sizeof(label), "%s%s", base, mediaTag(items[i].kind));
 
             if (i == sel) {
                 glColor4ub(255, 220, 80, 255);

@@ -4,7 +4,12 @@ class CstrAudio {
         SPU_SAMPLE_SIZE    = 1024,
         SPU_SAMPLE_COUNT   = SPU_SAMPLE_SIZE / 4,
         SPU_MAX_CHAN       = 24 + 1,
+#ifdef DREAMCAST
+        // Fewer queued buffers on DC: each holds 1 KB of stereo samples
+        SPU_ALC_BUF_AMOUNT = 8
+#else
         SPU_ALC_BUF_AMOUNT = 16
+#endif
     };
     
     const int f[5][2] = {
