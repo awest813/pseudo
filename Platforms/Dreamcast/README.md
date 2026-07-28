@@ -1,8 +1,45 @@
-# PSeudo — Sega Dreamcast port
+# pseudoXDC (psxdc)
 
-A port of the PSeudo PSX emulator to the Sega Dreamcast, built on
-[KallistiOS](https://github.com/KallistiOS/KallistiOS) with GLdc for
-rendering and ALdc for audio.
+**pseudoXDC** (short: **psxdc**) is the Sega Dreamcast port of
+[PSeudo](https://github.com/dkoluris/pseudo), a lightweight PlayStation
+emulator. It runs on real Dreamcast hardware via
+[KallistiOS](https://github.com/KallistiOS/KallistiOS), with GLdc for
+video and ALdc for audio.
+
+## Goal
+
+Ship a practical PS1 experience on Dreamcast by steadily improving:
+
+| Focus | What we’re chasing |
+|-------|--------------------|
+| **Compatibility** | Boot and play more commercial titles (e.g. 2.5D / FMV-heavy games) with fewer freezes, missing graphics, or silent audio |
+| **Performance** | Keep the SH4 busy on useful work — idle-skip, tighter hot paths, sensible audio buffering |
+| **Features** | Disc formats, XA/CD audio, memcards, MDEC/FMV, a usable on-console boot UI |
+
+Upstream PSeudo is the core. This tree extends that core and the Dreamcast
+platform layer toward those three goals.
+
+## Progress
+
+Rough status relative to a playable Dreamcast build (not a claim that
+any specific commercial title is finished):
+
+| Area | Status | Notes |
+|------|--------|--------|
+| CPU (R3000A) | Strong | Interpreter core; DC idle-skip for vsync poll loops |
+| GTE | Improved | UNR divide, SF/LM on lighting & RTPS/RTPT, MVMVA edge cases |
+| GPU | Partial | STP/mask, VRAM fill, texture window, GPUSTAT mirrors; still GL-immediate, not a full PS1 rasterizer |
+| CD-ROM | Improved | MODE1/2048 & raw 2352, ReadN/ReadS, GetlocL, XA filter, sector delivery fixes |
+| XA audio | Present | ADPCM decode + 37800→44100 resample into the SPU mix |
+| SPU | Partial | Key on/off, ENDX, ENVX stub; no full ADSR/reverb yet |
+| MDEC | Present | Status/protocol work for FMV; needs more real-stream validation |
+| Memcard / SIO | Present | 128KB card, pad map, `/pc/memcard1.mcr` when available |
+| Rootcounters | Improved | Once/repeat IRQ, pulse/toggle |
+| Boot UI | Present | Branded media picker (scroll, key-repeat, confirm, fatal BIOS screen) |
+
+**Still open for title-class play:** GPU accuracy (blend/textures), CD
+streaming timing, SPU envelopes, and real hardware smoke tests (e.g.
+toward games like Klonoa).
 
 ## Building
 
@@ -12,56 +49,64 @@ rendering and ALdc for audio.
 make -C Platforms/Dreamcast        # produces pseudo-dreamcast.elf
 ```
 
-Requires the kos-ports packages `libGL` (GLdc) and `libAL` (ALdc). CI
-builds the ELF in the `ghcr.io/kos-builds/kos-ports-dc` container and
-uploads it as an artifact.
+Requires kos-ports `libGL` (GLdc) and `libAL` (ALdc). CI builds the ELF
+in `ghcr.io/kos-builds/kos-ports-dc` and uploads it as an artifact.
 
-**Host check** — without the KOS environment, the same `make` compiles
-and links every emulator source against the stub KOS/GLdc/ALdc headers
-in `HostCheck/`, catching porting regressions on a PC.
+**Host check** — without KOS, the same `make` links the emulator against
+stub headers in `HostCheck/` so PC CI catches porting breaks.
+
+**Unit tests** (host):
+
+```
+make -C Tests run
+```
 
 ## Media
 
-PSeudo detects media by content, not by file name, scanning the romdisk
-(`/rd`) first and the GD-ROM (`/cd`) second:
+Content is detected by type, not filename. Scan order: romdisk `/rd`,
+then GD-ROM `/cd` (plus optional dc-load path args).
 
-| Media    | Detection                                              |
-|----------|--------------------------------------------------------|
-| PS1 BIOS | any 512KB dump, e.g. `SCPH1001.BIN` (not distributed)  |
-| Game     | raw disc image (2352 or 2048 bytes/sector), or a `.cue` naming one |
-|          | ECM images are detected but not supported — decompress first |
-| Homebrew | a PS-X EXE file                                        |
+| Media | Detection |
+|-------|-----------|
+| PS1 BIOS | Any 512KB dump, e.g. `SCPH1001.BIN` (**not distributed**) |
+| Game | Raw disc image (2352 or 2048 bytes/sector), or a `.cue` naming one |
+| | ECM images are detected but unsupported — decompress first |
+| Homebrew | `PS-X EXE` file |
 
-Files placed in `romdisk/` are baked into the binary at `/rd`. The
-romdisk is loaded into RAM whole, so prefer the GD-ROM for full-size
-game images.
+Files in `romdisk/` bake into `/rd`. Prefer the GD-ROM for full-size
+images (romdisk is loaded into RAM).
 
-With a BIOS present the boot menu always appears, even for a single
-game (so you can still open the BIOS shell). D-pad or analog stick to
-move (hold to scroll), **A**/**Start** to boot, **B** for the BIOS
-shell. Without a controller the first entry boots after a short
-countdown. A missing BIOS shows an on-screen notice instead of only
-logging to the serial console.
+With a BIOS present, the **pseudoXDC** boot menu always appears (even
+for one game, so you can still open the BIOS shell). Hold D-pad to
+scroll, **A**/**Start** to boot, **B** for BIOS. No controller → short
+countdown. Missing BIOS → on-screen fatal notice.
 
 ## Controls
 
-| Dreamcast              | PlayStation |
-|------------------------|-------------|
-| D-pad / analog stick   | D-pad       |
-| A                      | Cross       |
-| B                      | Circle      |
-| X                      | Square      |
-| Y                      | Triangle    |
-| L trigger              | L1          |
-| R trigger              | R1          |
-| Z / C (arcade sticks)  | L2 / R2     |
-| Start                  | Start       |
-| L + R triggers + Start | Select      |
-| A + B + X + Y + Start  | quit        |
+| Dreamcast | PlayStation |
+|-----------|-------------|
+| D-pad / analog stick | D-pad |
+| A | Cross |
+| B | Circle |
+| X | Square |
+| Y | Triangle |
+| L trigger | L1 |
+| R trigger | R1 |
+| Z / C (arcade sticks) | L2 / R2 |
+| Start | Start |
+| L + R triggers + Start | Select |
+| A + B + X + Y + Start | quit |
 
 ## Saves
 
-PlayStation memory card data is stored in `/pc/memcard1.mcr` on hardware
-when a `/pc` filesystem is available (e.g. SD adapter or dcload host
-folder). Without `/pc`, the card starts empty each run until a writable
-path is configured.
+Memory card data goes to `/pc/memcard1.mcr` when a `/pc` filesystem is
+available (SD adapter, dcload host folder, etc.). Without `/pc`, the
+card starts empty each run.
+
+## Credits
+
+- **PSeudo** — original emulator by [Dennis Koluris](https://naden.co) / [dkoluris/pseudo](https://github.com/dkoluris/pseudo)
+- **pseudoXDC / psxdc** — Dreamcast port and ongoing compatibility, performance, and feature work in this tree
+- **KallistiOS**, **GLdc**, **ALdc** — Dreamcast toolchain and APIs
+
+Apache 2.0 — see the repository `LICENSE`.

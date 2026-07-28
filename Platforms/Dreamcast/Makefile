@@ -1,4 +1,4 @@
-# PSeudo — Sega Dreamcast port
+# pseudoXDC / psxdc — Sega Dreamcast port of PSeudo
 #
 # Dreamcast build (produces pseudo-dreamcast.elf):
 #   Source the KOS environment first (e.g. `. /opt/toolchains/dc/kos/environ.sh`),
