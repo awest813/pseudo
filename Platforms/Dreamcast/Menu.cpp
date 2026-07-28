@@ -191,9 +191,14 @@ int menuPickGame(const MediaEntry *items, int count) {
             int i = first + row;
             int y = 88 + row * (FONT_CH + 4);
 
-            const char *base = baseName(items[i].path);
             char label[MEDIA_PATH_MAX + 12];
-            snprintf(label, sizeof(label), "%s%s", base, mediaTag(items[i].kind));
+            if (i < count) {
+                snprintf(label, sizeof(label), "%s%s",
+                         baseName(items[i].path), mediaTag(items[i].kind));
+            }
+            else {
+                snprintf(label, sizeof(label), "Start BIOS");
+            }
 
             if (i == sel) {
                 glColor4ub(255, 220, 80, 255);

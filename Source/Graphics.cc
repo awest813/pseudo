@@ -351,6 +351,33 @@ void CstrGraphics::photoMoveWithin(uw *packets) {
     }
 }
 
+void CstrGraphics::photoFill(uw *packets) {
+    // GP0(02h): quick VRAM fill — ignores mask bits, forces bit15=0
+    const ub r =  packets[0]        & 0xff;
+    const ub g = (packets[0] >>  8) & 0xff;
+    const ub b = (packets[0] >> 16) & 0xff;
+    const uh pixel = (uh)((r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10));
+
+    uh x = (packets[1] >>  0) & 0x3f0;
+    uh y = (packets[1] >> 16) & 0x1ff;
+    uh w = (uh)((((packets[2] >>  0) & 0x3ff) + 0x0f) & ~0x0f);
+    uh h = (packets[2] >> 16) & 0x1ff;
+
+    if (w == 0 || h == 0) {
+        return;
+    }
+
+    for (uh v = 0; v < h; v++) {
+        const uh py = (uh)((y + v) & (FRAME_H - 1));
+        for (uh u = 0; u < w; u++) {
+            const uh px = (uh)((x + u) & (FRAME_W - 1));
+            vram.ptr[(py << 10) + px] = pixel;
+        }
+    }
+
+    tcache.invalidate(x, y, w, h);
+}
+
 void CstrGraphics::photoSendTo(uw *packets) {
     // Source
     uh srcX = (packets[1] >>  0) & 0x03ff;

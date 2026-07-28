@@ -48,6 +48,15 @@ void CstrAudio::voiceOn(uw data) {
     }
 }
 
+void CstrAudio::voiceOff(uw data) {
+    for (int n = 0; n < SPU_MAX_CHAN; n++) {
+        if (data & (1 << n)) {
+            spuVoices[n].active = false;
+            spuVoices[n].isNew  = false;
+        }
+    }
+}
+
 void CstrAudio::mixXA(int samples) {
     for (int ns = 0; ns < samples; ns++) {
         if (xaCount <= 0) {
@@ -231,6 +240,16 @@ void CstrAudio::write(uw addr, uh data) {
         case 0x1d8a: // Sound On 2
             voiceOn(data << 16);
             return;
+
+        case 0x1d8c: // Sound Off 1
+            voiceOff(data);
+            accessMem(mem.hwr, uh) = data;
+            return;
+
+        case 0x1d8e: // Sound Off 2
+            voiceOff(data << 16);
+            accessMem(mem.hwr, uh) = data;
+            return;
             
         case 0x1da6: // Transfer Address
             spuAddr = data << 3;
@@ -257,8 +276,6 @@ void CstrAudio::write(uw addr, uh data) {
         case 0x1d82: // Volume R
         case 0x1d84: // Reverb Volume L
         case 0x1d86: // Reverb Volume R
-        case 0x1d8c: // Sound Off 1
-        case 0x1d8e: // Sound Off 2
         case 0x1d90: // FM Mode On 1
         case 0x1d92: // FM Mode On 2
         case 0x1d94: // Noise Mode On 1

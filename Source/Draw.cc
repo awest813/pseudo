@@ -244,13 +244,12 @@ void CstrDraw::primitive(uw addr, uw *packets) {
     switch((addr >> 5) & 7) {
         case GPU_TYPE_CMD:
             switch(addr) {
-                case 0x01: // Reset
-                    vs.write(0x1f801814, 0x01000000);
+                case 0x01: // Clear Cache
+                    tcache.invalidate(0, 0, FRAME_W, FRAME_H);
                     return;
                     
-                case 0x02: // Rect
+                case 0x02: // Fill Rectangle in VRAM
                     {
-                        // Basic packet components
                         Color  *hue[1];
                         Coords *vx [1];
                         Coords *sz [1];
@@ -258,17 +257,20 @@ void CstrDraw::primitive(uw addr, uw *packets) {
                         parse(hue, &packets[0], 1, 0);
                         parse( vx, &packets[1], 1, 0);
                         parse( sz, &packets[2], 1, 0);
+
+                        vs.photoFill(packets);
                         
                         opaqueClipState(false);
                         GLColor4ub(hue[0]->r, hue[0]->c, hue[0]->b, COLOR_MAX);
                         
 #if defined(APPLE_MACOS) || defined(_WIN32) || defined(DREAMCAST)
-                        GLRecti(NORMALIZE_PT(vx[0]->w),
-                                NORMALIZE_PT(vx[0]->h),
-                                NORMALIZE_PT(vx[0]->w) + sz[0]->w,
-                                NORMALIZE_PT(vx[0]->h) + sz[0]->h);
-#elif APPLE_IOS
-                        // TODO
+                        const sh fx = (sh)(vx[0]->w & 0x3f0);
+                        const sh fy = (sh)(vx[0]->h & 0x1ff);
+                        const sh fw = (sh)(((sz[0]->w & 0x3ff) + 0x0f) & ~0x0f);
+                        const sh fh = (sh)(sz[0]->h & 0x1ff);
+                        if (fw && fh) {
+                            GLRecti(fx, fy, fx + fw, fy + fh);
+                        }
 #endif
                         opaqueClipState(true);
                     }

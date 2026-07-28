@@ -106,6 +106,50 @@ int main() {
     check(vs.vram.ptr[(1 << 10) + 1] == 0x8002, "mask check: locked dest preserved");
   }
 
+  // --- GP0(02h) VRAM fill ------------------------------------------------
+  {
+    vs.reset();
+    // Seed with non-zero so we can see the clear
+    for (int i = 0; i < 64; i++) {
+        vs.vram.ptr[i] = 0xffff;
+    }
+
+    uw fill[3] = {
+        0x020000f8,       // cmd + R=0xf8 G=0 B=0 → R5=0x1f
+        0x00000000,       // pos (0,0)
+        0x00010010,       // 16x1 (already aligned)
+    };
+    vs.setMask(0x3); // mask force+check must be ignored by fill
+    vs.photoFill(fill);
+
+    check(vs.vram.ptr[0] == 0x001f, "fill: RGB555 red pixel");
+    check((vs.vram.ptr[0] & 0x8000) == 0, "fill: bit15 forced clear");
+    check(vs.vram.ptr[15] == 0x001f, "fill: covers width");
+    check(vs.vram.ptr[16] == 0xffff, "fill: stops at width");
+
+    // Xpos rounded down to 0x10 steps; Xsiz rounded up
+    uw fill2[3] = {
+        0x02f80000,       // B=0xf8 → bits 10-14
+        0x00000005,       // X=5 → rounded to 0
+        0x00010001,       // W=1 → rounded to 0x10
+    };
+    vs.photoFill(fill2);
+    check(vs.vram.ptr[0] == 0x7c00, "fill: rounding still fills 16px");
+
+    // Zero size: no write
+    vs.vram.ptr[0] = 0x1234;
+    uw fill0[3] = { 0x020000ff, 0, 0x00010000 };
+    vs.photoFill(fill0);
+    check(vs.vram.ptr[0] == 0x1234, "fill: Xsiz=0 is no-op");
+  }
+
+  // --- GP0(01h) Clear Cache via primitive --------------------------------
+  {
+    uw cmd = 0x01000000;
+    draw.primitive(0x01, &cmd); // must not abort / printx
+    check(true, "clear cache: primitive accepted");
+  }
+
     if (failed) {
         printf("\nFAILED (%d failures)\n", failed);
         return 1;

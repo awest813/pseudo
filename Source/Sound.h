@@ -49,6 +49,7 @@ class CstrAudio {
 
     sh setVolume(sh);
     void voiceOn(uw);
+    void voiceOff(uw);
     void freeBuffers();
     void mixXA(int samples);
     

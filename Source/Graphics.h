@@ -133,6 +133,7 @@ public:
     void photoMoveWithin(uw *);
     void photoSendTo(uw *);
     void photoReadFrom(uw *);
+    void photoFill(uw *);
     
     uh dispOffsetX, dispOffsetY, rx_l, rx_u;
 };
