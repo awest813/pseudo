@@ -19,8 +19,8 @@ int main() {
     audio.write(0x1f801c06, 0x0200); // sound address << 3 internally
     audio.write(0x1f801d88, 0x0001); // Key On voice 0
 
-    // Channel +0xC hack reports isNew
-    check(audio.read(0x1f801c0c) == 1, "key on: voice 0 armed");
+    // Channel +0xC ENVX is non-zero while armed or playing
+    check(audio.read(0x1f801c0c) != 0, "key on: voice 0 armed");
 
     audio.write(0x1f801d8c, 0x0001); // Key Off voice 0
     check(audio.read(0x1f801c0c) == 0, "key off: voice 0 disarmed");
@@ -28,7 +28,7 @@ int main() {
     // Key On voice 16 via Sound On 2
     audio.write(0x1f801c06 + (16 * 0x10), 0x0400);
     audio.write(0x1f801d8a, 0x0001); // Key On bit 0 of high word → voice 16
-    check(audio.read(0x1f801c0c + (16 * 0x10)) == 1, "key on: voice 16 armed");
+    check(audio.read(0x1f801c0c + (16 * 0x10)) != 0, "key on: voice 16 armed");
 
     audio.write(0x1f801d8e, 0x0001); // Key Off voice 16
     check(audio.read(0x1f801c0c + (16 * 0x10)) == 0, "key off: voice 16 disarmed");

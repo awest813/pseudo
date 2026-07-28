@@ -319,13 +319,13 @@ uh CstrAudio::read(uw addr) {
                 ub ch = SPU_CHANNEL(addr);
                 
                 switch(addr & 0xf) {
-                    case 0xc: // Hack
-                        if (spuVoices[ch].isNew) {
-                            return 1;
+                    case 0xc: // ENVX — current ADSR volume (no envelope yet)
+                        if (spuVoices[ch].isNew || spuVoices[ch].active) {
+                            return 0x7fff;
                         }
                         return 0;
                         
-                    case 0xe: // Madman
+                    case 0xe: // Repeat / loop address
                         if (spuVoices[ch].raddr) {
                             return spuVoices[ch].raddr >> 3;
                         }
