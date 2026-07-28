@@ -47,7 +47,7 @@ class CstrCD {
     
 public:
     void reset();
-    void update();
+    void update(uw ticks = 1);
     
     // Store
     void write(uw, ub);

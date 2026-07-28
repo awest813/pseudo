@@ -44,16 +44,18 @@ void CstrCD::reset() {
     seeked   = false;
 }
 
-void CstrCD::update() {
+void CstrCD::update(uw cycles) {
     if (interruptSet) {
-        if (interruptSet++ >= 8) {
+        interruptSet += cycles;
+        if (interruptSet >= 8 * 100) {
             interruptSet = 0;
             interrupt();
         }
     }
-    
+
     if (interruptReadSet) {
-        if (interruptReadSet++ >= 1024) {
+        interruptReadSet += cycles;
+        if (interruptReadSet >= 1024 * 100) {
             interruptReadSet = 0;
             interruptRead();
         }

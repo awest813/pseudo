@@ -15,10 +15,11 @@ void CstrBus::interruptSet(ub code) {
     if (!interrupts[code].queued) { interrupts[code].queued = INT_ENABLED; }
 }
 
-void CstrBus::update() { // A method to schedule when IRQs should fire
+void CstrBus::update(uw cycles) {
     for (auto &item : interrupts) {
         if (item.queued) {
-            if (item.queued++ == item.dest) {
+            item.queued += cycles;
+            if (item.queued >= (uw)item.dest * 100) {
                 item.queued = INT_DISABLED;
                 data16 |= 1 << item.code;
             }

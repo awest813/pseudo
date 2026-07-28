@@ -67,24 +67,76 @@ void CstrMips::bootstrap() {
     }
 }
 
+#ifdef DREAMCAST
+// True when insn is LW from the PSX I/O register range (0x1f801000).
+static bool loadsHwReg(uw insn) {
+    if ((insn >> 26) != 35) {
+        return false;
+    }
+
+    const uw reg = (insn >> 21) & 31;
+    const sw off = (sw)(insn & 0xffff);
+    const uw addr = cpu.base[reg] + off;
+    return (addr & 0xffff0000) == 0x1f800000;
+}
+#endif
+
 void CstrMips::run() {
 #ifdef DREAMCAST
     // Larger batches amortize rootc/vs/cd/bus updates on the SH4
     const int threshold = 512;
+    int idleBatches = 0;
 #else
     const int threshold = 100;
 #endif
     
     while(!psx.suspended) {
+#ifdef DREAMCAST
+        uw pcMin = ~0u;
+        uw pcMax = 0;
+        bool sawHwPoll = false;
+#endif
+
         for (int i = 0; i < threshold; i++) {
+#ifdef DREAMCAST
+            const uw insn = *instCache;
+            if (pc < pcMin) {
+                pcMin = pc;
+            }
+            if (pc > pcMax) {
+                pcMax = pc;
+            }
+            if (loadsHwReg(insn)) {
+                sawHwPoll = true;
+            }
+#endif
             step(false);
         }
         
         // Tick psx
         rootc.update(threshold * 3);
            vs.update(threshold * 3);
-           cd.update();
-          bus.update();
+           cd.update(threshold);
+          bus.update(threshold);
+
+#ifdef DREAMCAST
+        // Games spend a lot of time in tight loops polling GPU status or
+        // IRQ registers. Fast-forward emulated time when we see that
+        // pattern so the SH4 is not spinning while waiting for vsync.
+        if (sawHwPoll && (pcMax - pcMin) < 64) {
+            if (++idleBatches >= 4) {
+                const uw ff = threshold * 32;
+                rootc.update(ff * 3);
+                vs.update(ff * 3);
+                cd.update(ff);
+                bus.update(ff);
+                idleBatches = 0;
+            }
+        }
+        else {
+            idleBatches = 0;
+        }
+#endif
         
         // Skip exceptions for GTE's sake
         if ((*instCache >> 26) == 0x12) {
