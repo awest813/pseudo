@@ -33,6 +33,9 @@ class CstrCD {
         ub data[2352];
         uw p;
     } transfer;
+
+    // Header/subheader of the last sector delivered (for CdlGetlocL)
+    ub lastLoc[8];
     
     ub irq;
     uw interruptSet;

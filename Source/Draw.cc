@@ -196,6 +196,7 @@ void CstrDraw::updateTextureState(uw data) {
     texState.color = (data >> 7) & 3;
     texState.abr   = (data >> 5) & 3;
     
+    vs.setDrawMode(data);
     GLBlendFunc(bit[texState.abr].src, bit[texState.abr].dst);
 }
 

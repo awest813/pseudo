@@ -14,10 +14,10 @@
     ret.status = CD_STAT_NO_INTR; \
     interruptQueue(data)
 
-#define startRead(kind) \
-    reads = kind; \
+#define startRead(cmd) \
+    reads = (cmd); \
     readed = 0xff; \
-    interruptQueue(6)
+    interruptQueue(cmd)
 
 #define stopRead() \
     if (reads) { \
@@ -33,6 +33,7 @@ void CstrCD::reset() {
     result   = { 0 };
     sector   = { 0 };
     transfer = { 0 };
+    memset(lastLoc, 0, sizeof(lastLoc));
     
     irq = 0;
     interruptSet = 0;
@@ -110,15 +111,16 @@ void CstrCD::interrupt() {
             result.data[0] = ret.statp;
             break;
             
-        case  3: // CdlAudio
+        case  3: // CdlPlay
             setResultSize(1);
             ret.status = CD_STAT_ACKNOWLEDGE;
             ret.statp |= 0x02;
             result.data[0] = ret.statp;
-            ret.statp |= 0x80;
+            ret.statp |= 0x80; // playing
             break;
             
         case  6: // CdlReadN
+        case 27: // CdlReadS
             if (!reads) {
                 return;
             }
@@ -146,7 +148,7 @@ void CstrCD::interrupt() {
         case  8: // CdlStop
             setResultSize(1);
             ret.status = CD_STAT_COMPLETE;
-            ret.statp &= (~(0x2));
+            ret.statp &= ~(0x80 | 0x20 | 0x02); // clear play/read/motor
             result.data[0] = ret.statp;
             break;
             
@@ -162,7 +164,7 @@ void CstrCD::interrupt() {
             setResultSize(1);
             ret.status = CD_STAT_COMPLETE;
             ret.statp |= 0x02;
-            ret.statp &= (~(0x20));
+            ret.statp &= ~(0x80 | 0x20); // clear play + reading
             result.data[0] = ret.statp;
             break;
             
@@ -224,7 +226,7 @@ void CstrCD::interrupt() {
             setResultSize(8);
             ret.status = CD_STAT_ACKNOWLEDGE;
             for (int i = 0; i < 8; i++) {
-                result.data[i] = transfer.data[i];
+                result.data[i] = lastLoc[i];
             }
             break;
             
@@ -377,9 +379,33 @@ void CstrCD::interruptRead() {
     
     trackRead();
     memcp(transfer.data, disc.bfr, CstrDisc::UDF_DATASIZE);
+    memcp(lastLoc, transfer.data, 8);
+
+    // MODE2 subheader: file/channel/submode/coding at bytes 4..7 of post-sync
+    const ub secFile = transfer.data[4];
+    const ub secChan = transfer.data[5];
+    const ub secSub  = transfer.data[6];
 
     if ((ret.mode & 0x30) == 0x20) {
         audio.decodeXA(transfer.data, ret.file, ret.channel);
+    }
+
+    // XA filter (mode bit3): skip non-matching sectors without DATA_READY
+    const bool xaFilter = (ret.mode & 0x08) != 0;
+    if (xaFilter && (secFile != ret.file || secChan != ret.channel)) {
+        sector.data[2]++;
+        if (sector.data[2] == 75) {
+            sector.data[2] = 0;
+            sector.data[1]++;
+            if (sector.data[1] == 60) {
+                sector.data[1] = 0;
+                sector.data[0]++;
+            }
+        }
+        readed = 0;
+        occupied = false;
+        interruptReadSet = 1;
+        return;
     }
 
     ret.status = CD_STAT_DATA_READY;
@@ -396,8 +422,8 @@ void CstrCD::interruptRead() {
     }
     readed = 0;
     
-    if ((transfer.data[4 + 2] & 0x80) && (ret.mode & 0x02)) {
-        interruptQueue(9); // CdlPause
+    if ((secSub & 0x80) && (ret.mode & 0x02)) {
+        interruptQueue(9); // CdlPause on end-of-file
     }
     else {
         interruptReadSet = 1;
@@ -409,13 +435,10 @@ void CstrCD::interruptRead() {
 void CstrCD::write(uw addr, ub data) {
     switch(addr & 0xf) {
         case 0:
-            ret.control = data | (ret.control & (~(0x03)));
-            
-            if (!data) {
-                param.p = 0;
-                param.c = 0;
-                result.done = false;
-            }
+            // Bits 0-1 select the register index. Do not clear the result
+            // FIFO merely because the index is set to 0 (games do this often
+            // before reading response bytes).
+            ret.control = (ret.control & ~0x03) | (data & 0x03);
             return;
             
         case 1:
@@ -434,7 +457,7 @@ void CstrCD::write(uw addr, ub data) {
                     
                 case  0: // CdlSinc
                 case  1: // CdlNop
-                case  3: // CdlAudio
+                case  3: // CdlPlay
                 case 11: // CdlMute
                 case 12: // CdlDemute
                 case 15: // CdlGetmode
@@ -466,7 +489,7 @@ void CstrCD::write(uw addr, ub data) {
                     irq = 0;
                     ret.status = CD_STAT_NO_INTR;
                     ret.control |= 0x80;
-                    startRead(1);
+                    startRead(data);
                     break;
                     
                 case 13: // CdlSetfilter
@@ -484,6 +507,10 @@ void CstrCD::write(uw addr, ub data) {
                     printx("/// PSeudo CD Write: %d <- %d", (addr & 0xf), data);
                     break;
             }
+
+            // Command consumes the parameter FIFO
+            param.p = 0;
+            param.c = 0;
             
             if (ret.status != CD_STAT_NO_INTR) {
                 bus.interruptSet(CstrBus::INT_CD);

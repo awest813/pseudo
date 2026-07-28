@@ -71,6 +71,11 @@ void CstrGraphics::setMask(uw data) {
     }
 }
 
+void CstrGraphics::setDrawMode(uw data) {
+    // GPUSTAT bits 0-10 mirror GP0(E1h) texture-page / dither / draw-to-display
+    ret.status = (ret.status & ~0x7ff) | (data & 0x7ff);
+}
+
 void CstrGraphics::writeVramPixel(uw index, uh pixel) {
     if (ret.status & GPU_STAT_MASKENABLED) {
         if (vram.ptr[index] & 0x8000) {
@@ -108,10 +113,17 @@ void CstrGraphics::write(uw addr, uw data) {
                     
                 case 0x03:
                     isDisabled = data & 1;
+                    if (isDisabled) {
+                        ret.status |= GPU_STAT_DISPLAYDISABLED;
+                    }
+                    else {
+                        ret.status &= ~GPU_STAT_DISPLAYDISABLED;
+                    }
                     return;
                     
                 case 0x04:
                     modeDMA = data & 3;
+                    ret.status = (ret.status & ~GPU_STAT_DMABITS) | ((modeDMA & 3) << 29);
                     return;
                     
                 case 0x05:
@@ -141,6 +153,16 @@ void CstrGraphics::write(uw addr, uw data) {
                         isVideo24Bit = data & 0x10;
                         isVideoPAL   = data & 0x08;
                         
+                        // Mirror display-mode fields into GPUSTAT
+                        ret.status &= ~(GPU_STAT_WIDTHBITS | GPU_STAT_DOUBLEHEIGHT |
+                                        GPU_STAT_PAL | GPU_STAT_RGB24 | GPU_STAT_INTERLACED);
+                        ret.status |= ((data & 0x3) << 16);                 // Hres bits 16-17
+                        if (data & 0x40) ret.status |= (1 << 18);           // Hres2 → width bit2
+                        if (data & 0x04) ret.status |= GPU_STAT_DOUBLEHEIGHT;
+                        if (isVideoPAL)   ret.status |= GPU_STAT_PAL;
+                        if (isVideo24Bit) ret.status |= GPU_STAT_RGB24;
+                        if (isInterlaced) ret.status |= GPU_STAT_INTERLACED;
+
                         // Basic info
                         const uh w = resMode[(data & 3) | ((data & 0x40) >> 4)];
                         const uh h = (data & 4) ? 480 : 240;

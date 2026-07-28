@@ -87,16 +87,23 @@ void CstrDisc::fetchTD(ub track, ub *b) {
 
 bool CstrDisc::trackRead(ub *t) {
     if (!file) {
-        memset(&bfr, 0, UDF_DATASIZE);
+        memset(&bfr, 0, UDF_FRAMESIZERAW);
         return false;
     }
 
     const long sector = MSF2SECT(BCD2INT(t[0]), BCD2INT(t[1]), BCD2INT(t[2]));
 
     if (sectorSize == 2048) {
+        // Present MODE1/2048 images in the same post-sync layout as raw
+        // sectors: header at [0..3], user data at [12..] so CD mode 0x00
+        // (skip 12) and GetlocL both work.
         fseek(file, sector * 2048, SEEK_SET);
         memset(bfr, 0, UDF_FRAMESIZERAW);
-        fread(bfr, 1, 2048, file);
+        bfr[0] = t[0];
+        bfr[1] = t[1];
+        bfr[2] = t[2];
+        bfr[3] = 0x02; // MODE1
+        fread(bfr + 12, 1, 2048, file);
     }
     else {
         fseek(file, sector * UDF_FRAMESIZERAW + 12, SEEK_SET);

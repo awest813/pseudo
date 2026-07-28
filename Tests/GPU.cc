@@ -16,6 +16,11 @@ enum {
     GPU_STAT_MASKDRAWN      = 0x00000800,
     GPU_STAT_MASKENABLED    = 0x00001000,
     GPU_STAT_DRAWINGALLOWED = 0x00000400,
+    GPU_STAT_DITHER         = 0x00000200,
+    GPU_STAT_DISPLAYDISABLED= 0x00800000,
+    GPU_STAT_RGB24          = 0x00200000,
+    GPU_STAT_PAL            = 0x00100000,
+    GPU_STAT_DMABITS        = 0x60000000,
 };
 
 int main() {
@@ -148,6 +153,40 @@ int main() {
     uw cmd = 0x01000000;
     draw.primitive(0x01, &cmd); // must not abort / printx
     check(true, "clear cache: primitive accepted");
+  }
+
+  // --- GPUSTAT mirrors GP1 display / DMA / GP0(E1) -----------------------
+  {
+    vs.reset();
+    vs.write(0x1f801814, 0x03000000); // display enable (bit0=0)
+    check((vs.read(0x1f801814) & GPU_STAT_DISPLAYDISABLED) == 0,
+          "GP1(03): display enabled clears DISABLED");
+
+    vs.write(0x1f801814, 0x03000001); // display disable
+    check((vs.read(0x1f801814) & GPU_STAT_DISPLAYDISABLED) != 0,
+          "GP1(03): display disabled sets DISABLED");
+  }
+
+  {
+    vs.reset();
+    vs.write(0x1f801814, 0x04000002); // DMA CPU→GP0
+    check((vs.read(0x1f801814) & GPU_STAT_DMABITS) == (2u << 29),
+          "GP1(04): DMA bits in GPUSTAT");
+  }
+
+  {
+    vs.reset();
+    vs.write(0x1f801814, 0x08000018); // PAL + 24bit
+    const uw stat = vs.read(0x1f801814);
+    check((stat & GPU_STAT_PAL) != 0,   "GP1(08): PAL bit");
+    check((stat & GPU_STAT_RGB24) != 0, "GP1(08): RGB24 bit");
+  }
+
+  {
+    vs.reset();
+    uw e1 = 0xe1000200; // dither bit9
+    draw.primitive(0xe1, &e1);
+    check((vs.read(0x1f801814) & GPU_STAT_DITHER) != 0, "GP0(E1): dither in GPUSTAT");
   }
 
     if (failed) {

@@ -63,7 +63,10 @@ int main() {
 
         ub msf[3] = { 0x00, 0x02, 0x00 };
         check(disc.trackRead(msf),                "MODE1 trackRead");
-        check(disc.bfr[0] == 0,                   "MODE1 trackRead: sector 0 marker");
+        check(disc.bfr[0] == 0x00,                "MODE1 header minute");
+        check(disc.bfr[1] == 0x02,                "MODE1 header second");
+        check(disc.bfr[3] == 0x02,                "MODE1 header mode");
+        check(disc.bfr[12] == 0,                  "MODE1 user data at +12");
     }
 
     // --- Raw 2352-byte sectors with CD sync -----------------------------

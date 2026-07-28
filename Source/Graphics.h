@@ -127,6 +127,7 @@ public:
     void write(uw, uw);
     uw read(uw);
     void setMask(uw);
+    void setDrawMode(uw);
     void executeDMA(CstrBus::castDMA *);
     
     // VRAM operations
