@@ -263,11 +263,9 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // One choice boots straight away; several bring up the picker
-    int pick = gameCount == 1 ? 0 : -1;
-    if (gameCount > 1) {
-        pick = menuPickGame(games, gameCount);
-    }
+    // Always offer the picker so a single game can still yield to the BIOS
+    // shell, and so zero-game boots still confirm "Start BIOS".
+    int pick = menuPickGame(games, gameCount);
 
     printf("Loading BIOS: %s\n", biosPath);
     psx.init(biosPath);
