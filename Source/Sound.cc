@@ -25,6 +25,7 @@ void CstrAudio::reset() {
     
     memset(&spuMem, 0, sizeof(spuMem));
     spuAddr = 0xffffffff;
+    endx = 0;
     
     for (auto &item : spuVoices) {
         item = { 0 };
@@ -44,6 +45,7 @@ void CstrAudio::voiceOn(uw data) {
         if (data & (1 << n) && spuVoices[n].saddr) {
             spuVoices[n].isNew  = true;
             spuVoices[n].repeat = false;
+            endx &= ~(1u << n);
         }
     }
 }
@@ -92,70 +94,76 @@ void CstrAudio::decodeXA(const ub *sector, ub file, ub channel) {
     }
 }
 
-void CstrAudio::decodeStream() {
-    while(!psx.suspended) {
-        memset(sbuf, 0, sizeof(sbuf));
+void CstrAudio::step() {
+    memset(sbuf, 0, sizeof(sbuf));
+    
+    for (int n = 0; n < SPU_MAX_CHAN; n++) {
+        auto &ch = spuVoices[n];
         
-        for (int n = 0; n < SPU_MAX_CHAN; n++) {
-            auto &ch = spuVoices[n];
+        if (ch.isNew) {
+            ch.paddr  = ch.saddr;
+            ch.spos   = 0x10000;
+            ch.bpos   = 28;
+            ch.sample = 0;
+            ch.s[0]   = 0;
+            ch.s[1]   = 0;
             
-            if (ch.isNew) {
-                ch.paddr  = ch.saddr;
-                ch.spos   = 0x10000;
-                ch.bpos   = 28;
-                ch.sample = 0;
-                ch.s[0]   = 0;
-                ch.s[1]   = 0;
-                
-                ch.isNew  = false;
-                ch.active = true;
-            }
-            
-            if (ch.active == false) {
-                continue;
-            }
-            
-            for (int ns = 0; ns < SPU_SAMPLE_COUNT; ns++) {
-                for (; ch.spos >= 0x10000; ch.spos -= 0x10000) {
-                    if (ch.bpos == 28) {
-                        if (ch.paddr == -1) {
-                            ch.active = false;
-                            redirect SPU_NEXT_CHANNEL;
-                        }
-                        
-                        ch.bpos = 0;
-                        ub shift   = spuMemC(ch.paddr) & 0xf;
-                        ub predict = spuMemC(ch.paddr++) >> 4;
-                        ub op      = spuMemC(ch.paddr++);
-                        
-                        for (int i = 0, rest; i < 28; ch.paddr++) {
-                            audioSet(0x0f, 0xc);
-                            audioSet(0xf0, 0x8);
-                        }
-                        
-                        if ((op & 4) && (!ch.repeat)) {
-                            ch.raddr = ch.paddr - 16;
-                        }
-                        
-                        if ((op & 1)) {
-                            ch.paddr = (op != 3 || ch.raddr == 0) ? -1 : ch.raddr;
-                        }
+            ch.isNew  = false;
+            ch.active = true;
+        }
+        
+        if (ch.active == false) {
+            continue;
+        }
+        
+        for (int ns = 0; ns < SPU_SAMPLE_COUNT; ns++) {
+            for (; ch.spos >= 0x10000; ch.spos -= 0x10000) {
+                if (ch.bpos == 28) {
+                    if (ch.paddr == -1) {
+                        ch.active = false;
+                        redirect SPU_NEXT_CHANNEL;
                     }
                     
-                    ch.sample = ch.bfr[ch.bpos++] >> 2;
+                    ch.bpos = 0;
+                    ub shift   = spuMemC(ch.paddr) & 0xf;
+                    ub predict = spuMemC(ch.paddr++) >> 4;
+                    ub op      = spuMemC(ch.paddr++);
+                    
+                    for (int i = 0, rest; i < 28; ch.paddr++) {
+                        audioSet(0x0f, 0xc);
+                        audioSet(0xf0, 0x8);
+                    }
+                    
+                    if ((op & 4) && (!ch.repeat)) {
+                        ch.raddr = ch.paddr - 16;
+                    }
+                    
+                    if (op & 1) {
+                        // ENDX latches when an ADPCM block with the end bit is reached
+                        endx |= (1u << n);
+                        ch.paddr = (op != 3 || ch.raddr == 0) ? -1 : ch.raddr;
+                    }
                 }
                 
-                sbuf[(ns * 2) + 0] += (ch.sample * ch.volumeL) >> 14;
-                sbuf[(ns * 2) + 1] += (ch.sample * ch.volumeR) >> 14;
-                
-                ch.spos += ch.freq;
+                ch.sample = ch.bfr[ch.bpos++] >> 2;
             }
             
-            SPU_NEXT_CHANNEL:
-                continue;
+            sbuf[(ns * 2) + 0] += (ch.sample * ch.volumeL) >> 14;
+            sbuf[(ns * 2) + 1] += (ch.sample * ch.volumeR) >> 14;
+            
+            ch.spos += ch.freq;
         }
+        
+        SPU_NEXT_CHANNEL:
+            continue;
+    }
 
-        mixXA(SPU_SAMPLE_COUNT);
+    mixXA(SPU_SAMPLE_COUNT);
+}
+
+void CstrAudio::decodeStream() {
+    while(!psx.suspended) {
+        step();
         
         // OpenAL
         ALint processed;
@@ -282,8 +290,8 @@ void CstrAudio::write(uw addr, uh data) {
         case 0x1d96: // Noise Mode On 2
         case 0x1d98: // Reverb Mode On 1
         case 0x1d9a: // Reverb Mode On 2
-        case 0x1d9c: // Mute 1
-        case 0x1d9e: // Mute 2
+        case 0x1d9c: // ENDX 0-15 (write ignored)
+        case 0x1d9e: // ENDX 16-23 (write ignored)
         case 0x1da0: // ?
         case 0x1daa: // Control
         case 0x1da2: // Reverb Address
@@ -353,7 +361,6 @@ uh CstrAudio::read(uw addr) {
         case 0x1d96: // Noise Mode On 2
         case 0x1d98: // Reverb Mode On 1
         case 0x1d9a: // Reverb Mode On 2
-        case 0x1d9c: // Voice Status 0 - 15
         case 0x1daa: // Control
         case 0x1dac: // ?
         case 0x1dae: // Status
@@ -365,6 +372,12 @@ uh CstrAudio::read(uw addr) {
         case 0x1dba: // ?
         case 0x1e00 ... 0x1e3e: // ?
             return accessMem(mem.hwr, uh);
+
+        case 0x1d9c: // ENDX voices 0-15
+            return (uh)(endx & 0xffff);
+
+        case 0x1d9e: // ENDX voices 16-23
+            return (uh)((endx >> 16) & 0xff);
     }
     
     printx("/// PSeudo SPU Read: 0x%x", addr);

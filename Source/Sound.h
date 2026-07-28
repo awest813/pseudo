@@ -22,6 +22,7 @@ class CstrAudio {
     uh spuMem[256 * 1024];
     uh sbuf[SPU_SAMPLE_SIZE];
     uw spuAddr;
+    uw endx; // Voice end flags (SPU ENDX 1d9c/1d9e)
     
     // OpenAL
     ALCdevice *device;
@@ -78,6 +79,8 @@ public:
     void reset();
     void decodeStream();
     void decodeXA(const ub *sector, ub file, ub channel);
+    // Mix one SPU_SAMPLE_COUNT stereo frame into sbuf (also used by tests)
+    void step();
     void write(uw, uh);
     uh read(uw);
     void executeDMA(CstrBus::castDMA *);

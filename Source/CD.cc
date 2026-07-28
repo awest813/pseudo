@@ -544,11 +544,8 @@ void CstrCD::write(uw addr, ub data) {
                         return;
 
                     case 0x20: // 2340-byte / XA ADPCM sector
+                    case 0x30: // rare; deliver from sector start like 0x20
                         transfer.p = 0;
-                        return;
-
-                    default:
-                        printx("/// PSeudo CD Write: %d switch 0x%x", (addr & 0xf), (ret.mode & 0x30));
                         return;
                 }
             }
