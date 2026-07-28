@@ -95,6 +95,7 @@ class CstrGraphics {
     
     int fetchMem(uh *, sw);
     int fetchMemEnd(int);
+    void writeVramPixel(uw index, uh pixel);
     
 public:
     enum {

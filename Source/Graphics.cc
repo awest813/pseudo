@@ -71,6 +71,20 @@ void CstrGraphics::setMask(uw data) {
     }
 }
 
+void CstrGraphics::writeVramPixel(uw index, uh pixel) {
+    if (ret.status & GPU_STAT_MASKENABLED) {
+        if (vram.ptr[index] & 0x8000) {
+            return;
+        }
+    }
+
+    if (ret.status & GPU_STAT_MASKDRAWN) {
+        pixel |= 0x8000;
+    }
+
+    vram.ptr[index] = pixel;
+}
+
 void CstrGraphics::write(uw addr, uw data) {
     switch(addr & 0xf) {
         case 0: // Data
@@ -245,7 +259,7 @@ int CstrGraphics::fetchMem(uh *ptr, sw size) {
                 vrop.raw[count] = tcache.pixel2texel(*ptr);
             }
             
-            vram.ptr[(vrop.v.p << 10) + vrop.h.p] = *ptr;
+            writeVramPixel((vrop.v.p << 10) + vrop.h.p, *ptr);
             vrop.h.p++;
             ptr++;
             
@@ -331,7 +345,8 @@ void CstrGraphics::photoMoveWithin(uw *packets) {
     
     for (int v = 0; v < iH; v++) {
         for (int h = 0; h < iW; h++) {
-            vram.ptr[((dstY + v) << 10) + dstX + h] = vram.ptr[((srcY + v) << 10) + srcX + h];
+            writeVramPixel(((dstY + v) << 10) + dstX + h,
+                           vram.ptr[((srcY + v) << 10) + srcX + h]);
         }
     }
 }
