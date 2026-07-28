@@ -167,6 +167,55 @@ int main() {
     check(cop2.MFC2(14) == pack(0, 0), "UNR: 0/1 projects to origin");
     check((gteFlag() & (1u << 17)) == 0, "UNR: 0/1 no overflow flag");
 
+    // --- MVMVA MX=3 garbage matrix ---------------------------------------
+    // Matrix = [-R*10h, +R*10h, IR0; R13,R13,R13; R22,R22,R22]
+    // R=0x10 -> ±0x100, IR0=0x20, R13=0x1000, R22=0x0800
+    // V=(1,2,3), CV=None, sf=0, lm=0
+    // MAC1 = -0x100*1 + 0x100*2 + 0x20*3 = 0x160
+    // MAC2 = 0x1000*(1+2+3) = 0x6000
+    // MAC3 = 0x0800*(1+2+3) = 0x3000
+    cop2.reset();
+    cop2.MTC2(6, 0x00100000); // CODE unused, G=0, R=0x10 in low byte... RGBC layout
+    // R is ub at offset 0 of register 6
+    cop2.MTC2(6, 0x10); // R=0x10
+    cop2.MTC2(8, 0x20); // IR0
+    cop2.CTC2(1, 0x1000); // R13 in low half of reg 1 (R13R21)
+    // R13 is __oo(cop2c.sh, 1, 0) — CTC2(1, ...) writes whole word
+    // R13R21 = oooo(cop2c.sw, 1): low=R13, high=R21
+    cop2.CTC2(1, 0x00001000); // R13=0x1000
+    cop2.CTC2(2, 0x00000800); // R22=0x0800 (low half of R22R23)
+    cop2.MTC2(9, 1);  // IR1 = Vx when v=3
+    cop2.MTC2(10, 2); // IR2
+    cop2.MTC2(11, 3); // IR3
+    // opcode: MVMVA sf=0 mx=3 v=3 cv=3 lm=0
+    // bits: sf<<19 | mx<<17 | v<<15 | cv<<13 | lm<<10 | 0x12
+    {
+        const uw code = (0 << 19) | (3 << 17) | (3 << 15) | (3 << 13) | (0 << 10) | 0x12;
+        cop2.execute(code);
+    }
+    check(cop2.MFC2(25) == 0x160,  "MVMVA MX3: MAC1");
+    check(cop2.MFC2(26) == 0x6000, "MVMVA MX3: MAC2");
+    check(cop2.MFC2(27) == 0x3000, "MVMVA MX3: MAC3");
+    check(cop2.MFC2(9)  == 0x160,  "MVMVA MX3: IR1");
+
+    // --- MVMVA CV=2 (FC) bug: omits Tx and Mx11*Vx1 from MAC --------------
+    // Identity-ish: mx=0 (RT), m12=0, m13=0x1000, V=(0,0,4), RFC=0x7fff
+    // Bugged MAC1 = (0*0 + 0x1000*4) = 0x4000 (sf=0)
+    // Full formula would add RFC<<12 + m11*v1 which is huge
+    cop2.reset();
+    cop2.CTC2(0, 0x00000000); // R11=0, R12=0
+    cop2.CTC2(1, 0x00001000); // R13=0x1000
+    cop2.CTC2(21, 0x7fffffff); // RFC large
+    cop2.MTC2(0, pack(0, 0)); // VX0=0, VY0=0
+    cop2.MTC2(1, 4);          // VZ0=4
+    {
+        // sf=0 mx=0 v=0 cv=2 lm=0
+        const uw code = (0 << 19) | (0 << 17) | (0 << 15) | (2 << 13) | (0 << 10) | 0x12;
+        cop2.execute(code);
+    }
+    check(cop2.MFC2(25) == 0x4000, "MVMVA CV2: MAC1 omits FC");
+    check(cop2.MFC2(9)  == 0x4000, "MVMVA CV2: IR1");
+
     printf("\n%s (%d failure%s)\n", failed ? "FAILED" : "PASSED", failed, failed == 1 ? "" : "s");
     return failed ? 1 : 0;
 }

@@ -424,13 +424,39 @@ void CstrCop2::execute(uw code) {
                 sw v1 = VX(v);
                 sw v2 = VY(v);
                 sw v3 = VZ(v);
-                
+
                 FLAG = 0;
-                
-                MAC1 = A1((((sd)CV1(cv) << 12) + (MX11(mx) * v1) + (MX12(mx) * v2) + (MX13(mx) * v3)) >> sh);
-                MAC2 = A2((((sd)CV2(cv) << 12) + (MX21(mx) * v1) + (MX22(mx) * v2) + (MX23(mx) * v3)) >> sh);
-                MAC3 = A3((((sd)CV3(cv) << 12) + (MX31(mx) * v1) + (MX32(mx) * v2) + (MX33(mx) * v3)) >> sh);
-                
+
+                sw m11, m12, m13, m21, m22, m23, m31, m32, m33;
+                if (mx < 3) {
+                    m11 = MX11(mx); m12 = MX12(mx); m13 = MX13(mx);
+                    m21 = MX21(mx); m22 = MX22(mx); m23 = MX23(mx);
+                    m31 = MX31(mx); m32 = MX32(mx); m33 = MX33(mx);
+                }
+                else {
+                    // Garbage matrix: [-R*10h, +R*10h, IR0, R13, R13, R13, R22, R22, R22]
+                    const sw r16 = (sw)R * 0x10;
+                    m11 = -r16; m12 = r16;  m13 = IR0;
+                    m21 = R13;  m22 = R13;  m23 = R13;
+                    m31 = R22;  m32 = R22;  m33 = R22;
+                }
+
+                if (cv == 2) {
+                    // FC translation is bugged: FLAG bits follow the full
+                    // formula, but MAC omits Tx and the Mx11*Vx1 term.
+                    A1((((sd)RFC << 12) + (m11 * v1) + (m12 * v2) + (m13 * v3)) >> sh);
+                    A2((((sd)GFC << 12) + (m21 * v1) + (m22 * v2) + (m23 * v3)) >> sh);
+                    A3((((sd)BFC << 12) + (m31 * v1) + (m32 * v2) + (m33 * v3)) >> sh);
+                    MAC1 = (sw)(((sd)(m12 * v2) + (m13 * v3)) >> sh);
+                    MAC2 = (sw)(((sd)(m22 * v2) + (m23 * v3)) >> sh);
+                    MAC3 = (sw)(((sd)(m32 * v2) + (m33 * v3)) >> sh);
+                }
+                else {
+                    MAC1 = A1((((sd)CV1(cv) << 12) + (m11 * v1) + (m12 * v2) + (m13 * v3)) >> sh);
+                    MAC2 = A2((((sd)CV2(cv) << 12) + (m21 * v1) + (m22 * v2) + (m23 * v3)) >> sh);
+                    MAC3 = A3((((sd)CV3(cv) << 12) + (m31 * v1) + (m32 * v2) + (m33 * v3)) >> sh);
+                }
+
                 MAC2IR(lm);
             }
             return;
