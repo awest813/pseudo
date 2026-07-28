@@ -377,6 +377,11 @@ void CstrCD::interruptRead() {
     
     trackRead();
     memcp(transfer.data, disc.bfr, CstrDisc::UDF_DATASIZE);
+
+    if ((ret.mode & 0x30) == 0x20) {
+        audio.decodeXA(transfer.data, ret.file, ret.channel);
+    }
+
     ret.status = CD_STAT_DATA_READY;
     
     sector.data[2]++;

@@ -124,6 +124,7 @@ typedef int8_t  sb; // byte
 #include "Mem.h"
 #include "Memcard.h"
 #include "PSeudo.h"
+#include "XA.h"
 #include "R3000A.h"
 #include "SIO.h"
 #include "Sound.h"

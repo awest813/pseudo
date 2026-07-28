@@ -29,6 +29,10 @@ void CstrAudio::reset() {
     for (auto &item : spuVoices) {
         item = { 0 };
     }
+
+    xaRead = xaWrite = xaCount = 0;
+    xaReset(&xaState);
+    cdVolL = cdVolR = 0x3fff;
 }
 
 sh CstrAudio::setVolume(sh data) {
@@ -41,6 +45,36 @@ void CstrAudio::voiceOn(uw data) {
             spuVoices[n].isNew  = true;
             spuVoices[n].repeat = false;
         }
+    }
+}
+
+void CstrAudio::mixXA(int samples) {
+    for (int ns = 0; ns < samples; ns++) {
+        if (xaCount <= 0) {
+            break;
+        }
+
+        sbuf[(ns * 2) + 0] += (xaL[xaRead] * cdVolL) >> 14;
+        sbuf[(ns * 2) + 1] += (xaR[xaRead] * cdVolR) >> 14;
+        xaRead = (xaRead + 1) % XA_BUF_SAMPLES;
+        xaCount--;
+    }
+}
+
+void CstrAudio::decodeXA(const ub *sector, ub file, ub channel) {
+    sh left[2048];
+    sh right[2048];
+    const int count = xaDecodeSector(sector, file, channel, &xaState, left, right, 2048);
+
+    for (int i = 0; i < count; i++) {
+        if (xaCount >= XA_BUF_SAMPLES) {
+            break;
+        }
+
+        xaL[xaWrite] = left[i];
+        xaR[xaWrite] = right[i];
+        xaWrite = (xaWrite + 1) % XA_BUF_SAMPLES;
+        xaCount++;
     }
 }
 
@@ -106,6 +140,8 @@ void CstrAudio::decodeStream() {
             SPU_NEXT_CHANNEL:
                 continue;
         }
+
+        mixXA(SPU_SAMPLE_COUNT);
         
         // OpenAL
         ALint processed;
@@ -200,7 +236,17 @@ void CstrAudio::write(uw addr, uh data) {
             spuAddr += 2;
             spuAddr &= 0x7ffff;
             return;
-            
+
+        case 0x1db0: // CD Volume L
+            cdVolL = setVolume(data);
+            accessMem(mem.hwr, uh) = data;
+            return;
+
+        case 0x1db2: // CD Volume R
+            cdVolR = setVolume(data);
+            accessMem(mem.hwr, uh) = data;
+            return;
+
         /* unused */
         case 0x1d80: // Volume L
         case 0x1d82: // Volume R
@@ -222,8 +268,6 @@ void CstrAudio::write(uw addr, uh data) {
         case 0x1da4: // ?
         case 0x1dac: // ?
         case 0x1dae: // ?
-        case 0x1db0: // CD Volume L
-        case 0x1db2: // CD Volume R
         case 0x1db4: // ?
         case 0x1db6: // ?
         case 0x1db8: // ?

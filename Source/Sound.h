@@ -10,6 +10,8 @@ class CstrAudio {
 #else
         SPU_ALC_BUF_AMOUNT = 16
 #endif
+        ,
+        XA_BUF_SAMPLES = 32768
     };
     
     const int f[5][2] = {
@@ -36,10 +38,17 @@ class CstrAudio {
         sw paddr; // Current
         sw raddr; // Return
     } spuVoices[SPU_MAX_CHAN];
-    
+
+    sh xaL[XA_BUF_SAMPLES];
+    sh xaR[XA_BUF_SAMPLES];
+    int xaRead, xaWrite, xaCount;
+    XADecodeState xaState;
+    sh cdVolL, cdVolR;
+
     sh setVolume(sh);
     void voiceOn(uw);
     void freeBuffers();
+    void mixXA(int samples);
     
 public:
     CstrAudio() {
@@ -65,6 +74,7 @@ public:
     
     void reset();
     void decodeStream();
+    void decodeXA(const ub *sector, ub file, ub channel);
     void write(uw, uh);
     uh read(uw);
     void executeDMA(CstrBus::castDMA *);
